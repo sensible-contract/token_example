@@ -1,0 +1,15 @@
+language: node_js
+node_js:
+ - "node"
+os:
+  - linux
+  - osx
+  - windows
+
+before_install:
+  - npm i -g npm@latest
+
+script:
+  - git clone -b master https://github.com/sCrypt-Inc/compiler_dist.git compiler
+  - npm install
+  - npm test -- --ci=true
