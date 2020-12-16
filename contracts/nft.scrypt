@@ -33,8 +33,8 @@ contract NFT {
   public function issue(SigHashPreimage txPreimage,
     int preTxOutpointSig, bytes preTxOutpointMsg, bytes preTxOutpointPadding,
     Sig issuerSig, PubKey issuer,
-    Ripemd160 receiverPkh, int satoshiAmount0,
-    Ripemd160 changePkh, int satoshiAmount1) {
+    Ripemd160 receiverPkh, int satoshiAmount1,
+    Ripemd160 changePkh, int satoshiAmount2) {
 
     SigHashType sigHashType = SigHash.ANYONECANPAY | SigHash.ALL | SigHash.FORKID;
     // this ensures the preimage is for the current tx
@@ -45,7 +45,6 @@ contract NFT {
     require(thisOutpoint[32 : 36] == num2bin(0, 4));
 
     // read previous locking script
-    // locking script = codePart + OP_RETURN +
     bytes lockingScript = Util.scriptCode(txPreimage);
     int scriptLen = len(lockingScript);
 
@@ -56,14 +55,10 @@ contract NFT {
     // 数据起始
     int dataStart = scriptLen -(32 + 4 + Util.PubKeyHashLen + 8 + 1);
 
-    // 溯源点
-    bytes genesisOutpoint = lockingScript[dataStart : dataStart + 36];
-
-    SatoTx st = new SatoTx(this.rabinPubKey, txPreimage, preTxOutpointSig, preTxOutpointMsg, preTxOutpointPadding, 0, b'', b'');
     // 溯源
+    bytes genesisOutpoint = lockingScript[dataStart : dataStart + 36];
+    SatoTx st = new SatoTx(this.rabinPubKey, txPreimage, preTxOutpointSig, preTxOutpointMsg, preTxOutpointPadding, 0, b'', b'');
     require(st.verifyGenesis(lockingScript, genesisOutpoint, dataStart));
-
-    int tokenId = unpack(lockingScript[scriptLen - 1 - 8 : scriptLen - 1]);
 
     // authorize
     Ripemd160 issuerPkh = Ripemd160(lockingScript[dataStart + 32 + 4 : dataStart + 32 + 4 + Util.PubKeyHashLen]);
@@ -73,18 +68,19 @@ contract NFT {
     // persist contract code part, including op_return itself
     bytes codePart = lockingScript[ : dataStart];
 
+    // 业务操作
+    int tokenId = unpack(lockingScript[scriptLen - 1 - 8 : scriptLen - 1]);
     int satoshiIssue = Util.value(txPreimage);
     bytes outputScript0 = codePart + genesisOutpoint + issuerPkh + num2bin(tokenId + 1, Util.OutputValueLen) + NFT.ISSUE;
     bytes output0 = Util.buildOutput(outputScript0, satoshiIssue);
 
     bytes outputScript1 = codePart + genesisOutpoint + receiverPkh + num2bin(tokenId + 1, Util.OutputValueLen) + NFT.TRANSFER;
-    bytes output1 = Util.buildOutput(outputScript1, satoshiAmount0);
+    bytes output1 = Util.buildOutput(outputScript1, satoshiAmount1);
 
     bytes lockingScript2 = Util.buildPublicKeyHashScript(changePkh);
-    bytes output2 = Util.buildOutput(lockingScript2, satoshiAmount1);
+    bytes output2 = Util.buildOutput(lockingScript2, satoshiAmount2);
 
     Sha256 hashOutputs = hash256(output0 + output1 + output2);
-
     require(hashOutputs == Util.hashOutputs(txPreimage));
   }
 
@@ -101,7 +97,6 @@ contract NFT {
     require(Util.checkPreimageSigHashType(txPreimage, sigHashType));
 
     // read previous locking script
-    // locking script = codePart + OP_RETURN +
     bytes lockingScript = Util.scriptCode(txPreimage);
     int scriptLen = len(lockingScript);
 
@@ -112,8 +107,8 @@ contract NFT {
     // 数据起始
     int dataStart = scriptLen -(32 + 4 + Util.PubKeyHashLen + 8 + 1);
 
-    SatoTx st = new SatoTx(this.rabinPubKey, txPreimage, preTxOutpointSig, preTxOutpointMsg, preTxOutpointPadding, 0, b'', b'');
     // 溯源
+    SatoTx st = new SatoTx(this.rabinPubKey, txPreimage, preTxOutpointSig, preTxOutpointMsg, preTxOutpointPadding, 0, b'', b'');
     require(st.verifyGenesis(lockingScript, SatoTx.disableUtxoInGenesisTx, dataStart));
 
     // authorize
@@ -121,21 +116,20 @@ contract NFT {
     require(hash160(sender) == senderPkh);
     require(checkSig(senderSig, sender));
 
+    bytes codePart = lockingScript[ : dataStart];
+
     // 业务操作
     bytes tokenId = lockingScript[scriptLen - 1 - 8 : scriptLen - 1];
-
-    bytes codePart = lockingScript[ : dataStart];
     // 溯源点
     bytes genesisOutpoint = lockingScript[dataStart : dataStart + 36];
 
     bytes outputScript0 = codePart + genesisOutpoint + receiverPkh + tokenId + NFT.TRANSFER;
     bytes output0 = Util.buildOutput(outputScript0, satoshiAmount0);
 
-    bytes lockingScript_ = Util.buildPublicKeyHashScript(changePkh);
-    bytes output1 = Util.buildOutput(lockingScript_, satoshiAmount1);
+    bytes lockingScript1 = Util.buildPublicKeyHashScript(changePkh);
+    bytes output1 = Util.buildOutput(lockingScript1, satoshiAmount1);
 
     Sha256 hashOutputs = hash256(output0 + output1);
-
     require(hashOutputs == Util.hashOutputs(txPreimage));
   }
 
@@ -149,7 +143,6 @@ contract NFT {
     require(Util.checkPreimageSigHashType(txPreimage, sigHashType));
 
     // read previous locking script
-    // locking script = codePart + OP_RETURN + ownerPublicKey +
     bytes lockingScript = Util.scriptCode(txPreimage);
     int scriptLen = len(lockingScript);
 
@@ -165,9 +158,9 @@ contract NFT {
     require(checkSig(ownerSig, owner));
 
     // send to a P2PKH script
-    bytes lockingScript_ = Util.buildPublicKeyHashScript(receiverPkh);
-    bytes output = Util.buildOutput(lockingScript_, satoshiAmount);
-    Sha256 hashOutputs = hash256(output);
+    bytes lockingScript0 = Util.buildPublicKeyHashScript(receiverPkh);
+    bytes output0 = Util.buildOutput(lockingScript0, satoshiAmount);
+    Sha256 hashOutputs = hash256(output0);
     require(hashOutputs == Util.hashOutputs(txPreimage));
   }
 }
