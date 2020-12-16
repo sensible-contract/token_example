@@ -36,18 +36,21 @@ contract Bitcoin {
   /* mint */
   public function mint(SigHashPreimage txPreimage,
     int preTxOutpointSig, bytes preTxOutpointMsg, bytes preTxOutpointPadding,
-    int sideTxUtxoSig, bytes sideTxUtxoMsg, bytes sideTxUtxoPadding,
     bytes blockHeader,
-    Ripemd160 receiverPkh, int satoshiAmount) {
+    Ripemd160 receiverPkh, int satoshiAmount1,
+    Ripemd160 changePkh, int satoshiAmount2) {
+
+    SigHashType sigHashType = SigHash.ANYONECANPAY | SigHash.ALL | SigHash.FORKID;
+    // this ensures the preimage is for the current tx
+    require(Util.checkPreimageSigHashType(txPreimage, sigHashType));
+
+    // issue必须是第0个output输出
+    bytes thisOutpoint = Util.outpoint(txPreimage);
+    require(thisOutpoint[32 : 36] == num2bin(0, 4));
 
     require(len(blockHeader) == 80);
 
-    // this ensures the preimage is for the current tx
-    require(Tx.checkPreimage(txPreimage));
-
-
     // read previous locking script
-    // locking script = codePart + OP_RETURN +
     bytes lockingScript = Util.scriptCode(txPreimage);
     int scriptLen = len(lockingScript);
 
@@ -58,12 +61,9 @@ contract Bitcoin {
     // 数据起始
     int dataStart = scriptLen -(32 + 4 + 80 + 8 + 1);
 
-    // 溯源点
-    bytes genesisOutpoint = lockingScript[dataStart : dataStart + 36];
-
-    SatoTx st = new SatoTx(this.rabinPubKey, txPreimage, preTxOutpointSig, preTxOutpointMsg, preTxOutpointPadding,
-      sideTxUtxoSig, sideTxUtxoMsg, sideTxUtxoPadding);
     // 溯源
+    bytes genesisOutpoint = lockingScript[dataStart : dataStart + 36];
+    SatoTx st = new SatoTx(this.rabinPubKey, txPreimage, preTxOutpointSig, preTxOutpointMsg, preTxOutpointPadding, 0, b'', b'');
     require(st.verifyGenesis(lockingScript, genesisOutpoint, dataStart));
 
     // 计算token subsidy
@@ -80,30 +80,32 @@ contract Bitcoin {
     bytes output0 = Util.buildOutput(outputScript0, satoshiMint);
 
     bytes outputScript1 = codePart + genesisOutpoint + receiverPkh + tokenAmount + Bitcoin.TRANSFER;
-    bytes output1 = Util.buildOutput(outputScript1, satoshiAmount);
-    Sha256 hashOutputs = hash256(output0 + output1);
+    bytes output1 = Util.buildOutput(outputScript1, satoshiAmount1);
 
+    bytes outputScript2 = Util.buildPublicKeyHashScript(changePkh);
+    bytes output2 = Util.buildOutput(outputScript2, satoshiAmount2);
+
+    Sha256 hashOutputs = hash256(output0 + output1 + output2);
     require(hashOutputs == Util.hashOutputs(txPreimage));
   }
 
   /* split */
   public function split(SigHashPreimage txPreimage,
     int preTxOutpointSig, bytes preTxOutpointMsg, bytes preTxOutpointPadding,
-    int sideTxUtxoSig, bytes sideTxUtxoMsg, bytes sideTxUtxoPadding,
 
     Sig senderSig, PubKey sender,
     Ripemd160 receiver0Pkh, int tokenAmount0, int satoshiAmount0,
-    Ripemd160 receiver1Pkh, int tokenAmount1, int satoshiAmount1) {
+    Ripemd160 receiver1Pkh, int tokenAmount1, int satoshiAmount1,
+    Ripemd160 changePkh, int satoshiAmount2) {
 
     require(tokenAmount0 > 0);
-    // 1 to 1 transfer when tokenAmount1 is 0
     require(tokenAmount1 > 0);
 
+    SigHashType sigHashType = SigHash.ANYONECANPAY | SigHash.ALL | SigHash.FORKID;
     // this ensures the preimage is for the current tx
-    require(Tx.checkPreimage(txPreimage));
+    require(Util.checkPreimageSigHashType(txPreimage, sigHashType));
 
     // read previous locking script
-    // locking script = codePart + OP_RETURN +
     bytes lockingScript = Util.scriptCode(txPreimage);
     int scriptLen = len(lockingScript);
 
@@ -114,9 +116,8 @@ contract Bitcoin {
     // 数据起始
     int dataStart = scriptLen -(32 + 4 + Util.PubKeyHashLen + 8 + 1);
 
-    SatoTx st = new SatoTx(this.rabinPubKey, txPreimage, preTxOutpointSig, preTxOutpointMsg, preTxOutpointPadding,
-      sideTxUtxoSig, sideTxUtxoMsg, sideTxUtxoPadding);
     // 溯源
+    SatoTx st = new SatoTx(this.rabinPubKey, txPreimage, preTxOutpointSig, preTxOutpointMsg, preTxOutpointPadding, 0, b'', b'');
     require(st.verifyGenesis(lockingScript, SatoTx.disableUtxoInGenesisTx, dataStart));
 
     // 业务操作
@@ -131,7 +132,6 @@ contract Bitcoin {
     require(balance == tokenAmount0 + tokenAmount1);
 
     bytes codePart = lockingScript[ : dataStart];
-    // 溯源点
     bytes genesisOutpoint = lockingScript[dataStart : dataStart + 36];
 
     // setting first balance as 0 is just a convention, not a requirement
@@ -140,19 +140,22 @@ contract Bitcoin {
 
     bytes outputScript1 = codePart + genesisOutpoint + receiver1Pkh + num2bin(tokenAmount1, Util.OutputValueLen) + Bitcoin.TRANSFER;
     bytes output1 = Util.buildOutput(outputScript1, satoshiAmount1);
-    Sha256 hashOutputs = hash256(output0 + output1);
 
+    bytes outputScript2 = Util.buildPublicKeyHashScript(changePkh);
+    bytes output2 = Util.buildOutput(outputScript2, satoshiAmount2);
+
+    Sha256 hashOutputs = hash256(output0 + output1 + output2);
     require(hashOutputs == Util.hashOutputs(txPreimage));
   }
 
   /* merge */
   public function merge(SigHashPreimage txPreimage,
     int preTxOutpointSig, bytes preTxOutpointMsg, bytes preTxOutpointPadding,
-
     int sideTxUtxoSig, bytes sideTxUtxoMsg, bytes sideTxUtxoPadding,
 
     Sig senderSig, PubKey sender,
-    Ripemd160 receiverPkh, bytes prevouts, int satoshiAmount) {
+    Ripemd160 receiverPkh, bytes prevouts, int satoshiAmount0,
+    Ripemd160 changePkh, int satoshiAmount1) {
 
     // this ensures the preimage is for the current tx
     require(Tx.checkPreimage(txPreimage));
@@ -171,7 +174,7 @@ contract Bitcoin {
       sideTxUtxoSig, sideTxUtxoMsg, sideTxUtxoPadding);
     // 溯源
     require(st.verifyGenesis(lockingScript, SatoTx.disableUtxoInGenesisTx, dataStart));
-    // 环查
+    // 排查
     require(st.verifySide(lockingScript, prevouts, dataStart));
 
     int otherTokenAmount = unpack(sideTxUtxoMsg[44 + dataStart + 32 + 4 + Util.PubKeyHashLen : 44 + dataStart + 32 + 4 + Util.PubKeyHashLen + 8]);
@@ -188,16 +191,25 @@ contract Bitcoin {
     bytes codePart = lockingScript[ : dataStart];
     bytes genesisOutpoint = lockingScript[dataStart : dataStart + 36];
     // merge
-    bytes outputScript = codePart + genesisOutpoint + receiverPkh + num2bin(tokenAmount + otherTokenAmount, Util.OutputValueLen) + Bitcoin.TRANSFER;
-    bytes output = Util.buildOutput(outputScript, satoshiAmount);
-    require(hash256(output) == Util.hashOutputs(txPreimage));
+
+    bytes outputScript0 = codePart + genesisOutpoint + receiverPkh + num2bin(tokenAmount + otherTokenAmount, Util.OutputValueLen) + Bitcoin.TRANSFER;
+    bytes output0 = Util.buildOutput(outputScript0, satoshiAmount0);
+
+    bytes outputScript1 = Util.buildPublicKeyHashScript(changePkh);
+    bytes output1 = Util.buildOutput(outputScript1, satoshiAmount1);
+
+    Sha256 hashOutputs = hash256(output0 + output1);
+    require(hashOutputs == Util.hashOutputs(txPreimage));
   }
 
   // burn a token back to normal bitcoins
   public function burn(SigHashPreimage txPreimage,
-    Sig senderSig, PubKey sender, Ripemd160 receiverPkh, int satoshiAmount) {
+    Sig senderSig, PubKey sender,
+    Ripemd160 receiverPkh, int satoshiAmount) {
+
+    SigHashType sigHashType = SigHash.ANYONECANPAY | SigHash.ALL | SigHash.FORKID;
     // this ensures the preimage is for the current tx
-    require(Tx.checkPreimage(txPreimage));
+    require(Util.checkPreimageSigHashType(txPreimage, sigHashType));
 
     // read previous locking script
     bytes lockingScript = Util.scriptCode(txPreimage);
@@ -215,9 +227,10 @@ contract Bitcoin {
     require(checkSig(senderSig, sender));
 
     // send to a P2PKH script
-    bytes lockingScript_ = Util.buildPublicKeyHashScript(receiverPkh);
-    bytes output = Util.buildOutput(lockingScript_, satoshiAmount);
-    Sha256 hashOutputs = hash256(output);
+    bytes lockingScript0 = Util.buildPublicKeyHashScript(receiverPkh);
+    bytes output0 = Util.buildOutput(lockingScript0, satoshiAmount);
+
+    Sha256 hashOutputs = hash256(output0);
     require(hashOutputs == Util.hashOutputs(txPreimage));
   }
 }
