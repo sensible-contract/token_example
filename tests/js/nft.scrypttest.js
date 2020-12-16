@@ -370,7 +370,6 @@ describe("Test sCrypt contract NFT In Javascript", () => {
         preTxOutpointSig,
         new Bytes(preTxOutpointMsg),
         new Bytes(preTxOutpointPadding),
-
         new Sig(toHex(sig)),
         new PubKey(toHex(pkOwner1)),
         new Ripemd160(toHex(pkhOwner2)),

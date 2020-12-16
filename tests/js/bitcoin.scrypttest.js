@@ -1,61 +1,68 @@
-const { expect } = require('chai');
-const { bsv, buildContractClass, toHex, getPreimage, num2bin, signTx, PubKey, Bytes, Sig, SigHashPreimage,Ripemd160 } = require('scryptlib');
-const { inputIndex, inputSatoshis, tx, compileContract, DataLen, dummyTxId, reversedDummyTxId } = require('../../helper');
+const { expect } = require("chai");
+const { bsv, buildContractClass, toHex, getPreimage, num2bin, signTx, PubKey, Bytes, Sig, SigHashPreimage, Ripemd160 } = require("scryptlib");
+const { inputIndex, inputSatoshis, newTx, compileContract, DataLen, dummyTxId, reversedDummyTxId } = require("../../helper");
 
-// make a copy since it will be mutated
-var tx_ = bsv.Transaction.shallowCopy(tx)
-const outputAmount = 22222
-    
-describe('Test sCrypt contract UTXO Token In Javascript', () => {
-  let bitcoinToken, lockingScriptCodePart, result
+var tx = newTx();
+const outputAmount = 22222;
 
-  const privateKey1 = new bsv.PrivateKey.fromRandom('testnet')
-  const publicKey1 = bsv.PublicKey.fromPrivateKey(privateKey1)
-  const pkh1 = bsv.crypto.Hash.sha256ripemd160(publicKey1.toBuffer())
-  const privateKey2 = new bsv.PrivateKey.fromRandom('testnet')
-  const publicKey2 = bsv.PublicKey.fromPrivateKey(privateKey2)
-  const privateKey3 = new bsv.PrivateKey.fromRandom('testnet')
-  const publicKey3 = bsv.PublicKey.fromPrivateKey(privateKey3)
-    
+describe("Test sCrypt contract UTXO Token In Javascript", () => {
+  let bitcoinToken, lockingScriptCodePart, result;
+
+  const privateKey1 = new bsv.PrivateKey.fromRandom("testnet");
+  const publicKey1 = bsv.PublicKey.fromPrivateKey(privateKey1);
+  const pkh1 = bsv.crypto.Hash.sha256ripemd160(publicKey1.toBuffer());
+  const privateKey2 = new bsv.PrivateKey.fromRandom("testnet");
+  const publicKey2 = bsv.PublicKey.fromPrivateKey(privateKey2);
+  const privateKey3 = new bsv.PrivateKey.fromRandom("testnet");
+  const publicKey3 = bsv.PublicKey.fromPrivateKey(privateKey3);
+
   before(() => {
-    const BitcoinToken = buildContractClass(compileContract('bitcoin.scrypt'))
-    bitcoinToken = new BitcoinToken()
+    const BitcoinToken = buildContractClass(compileContract("bitcoin.scrypt"));
+    bitcoinToken = new BitcoinToken();
 
     // code part
-    lockingScriptCodePart = bitcoinToken.codePart.toASM()
+    lockingScriptCodePart = bitcoinToken.codePart.toASM();
   });
 
-  it('should succeed when one token is split into two', () => {
+  it("should succeed when one token is split into two", () => {
     // split 100 tokens
-    bitcoinToken.setDataPart(toHex(publicKey1) + num2bin(10, DataLen) + num2bin(90, DataLen))
-    
+    bitcoinToken.setDataPart(toHex(publicKey1) + num2bin(10, DataLen) + num2bin(90, DataLen));
+
     const testSplit = (privKey, balance0, balance1, balanceInput0 = balance0, balanceInput1 = balance1) => {
-      tx_ = new bsv.Transaction()
+      tx = new bsv.Transaction();
 
-      tx_.addInput(new bsv.Transaction.Input({
-        prevTxId: dummyTxId,
-        outputIndex: 0,
-        script: ''
-      }), bsv.Script.fromASM(bitcoinToken.lockingScript.toASM()), inputSatoshis)
+      tx.addInput(
+        new bsv.Transaction.Input({
+          prevTxId: dummyTxId,
+          outputIndex: 0,
+          script: "",
+        }),
+        bsv.Script.fromASM(bitcoinToken.lockingScript.toASM()),
+        inputSatoshis
+      );
 
-      const newLockingScript0 = [lockingScriptCodePart, toHex(publicKey2) + num2bin(0, DataLen) + num2bin(balance0, DataLen)].join(' ')
-      tx_.addOutput(new bsv.Transaction.Output({
-        script: bsv.Script.fromASM(newLockingScript0),
-        satoshis: outputAmount
-      }))
+      const newLockingScript0 = [lockingScriptCodePart, toHex(publicKey2) + num2bin(0, DataLen) + num2bin(balance0, DataLen)].join(" ");
+      tx.addOutput(
+        new bsv.Transaction.Output({
+          script: bsv.Script.fromASM(newLockingScript0),
+          satoshis: outputAmount,
+        })
+      );
 
       if (balance1 > 0) {
-        const newLockingScript1 = [lockingScriptCodePart, toHex(publicKey3) + num2bin(0, DataLen) + num2bin(balance1, DataLen)].join(' ')
-        tx_.addOutput(new bsv.Transaction.Output({
-          script: bsv.Script.fromASM(newLockingScript1),
-          satoshis: outputAmount
-        }))
+        const newLockingScript1 = [lockingScriptCodePart, toHex(publicKey3) + num2bin(0, DataLen) + num2bin(balance1, DataLen)].join(" ");
+        tx.addOutput(
+          new bsv.Transaction.Output({
+            script: bsv.Script.fromASM(newLockingScript1),
+            satoshis: outputAmount,
+          })
+        );
       }
 
-      bitcoinToken.txContext = { tx: tx_, inputIndex, inputSatoshis }
-      
-      const preimage = getPreimage(tx_, bitcoinToken.lockingScript.toASM(), inputSatoshis, inputIndex)
-      const sig = signTx(tx_, privKey, bitcoinToken.lockingScript.toASM(), inputSatoshis)
+      bitcoinToken.txContext = { tx: tx, inputIndex, inputSatoshis };
+
+      const preimage = getPreimage(tx, bitcoinToken.lockingScript.toASM(), inputSatoshis, inputIndex);
+      const sig = signTx(tx, privKey, bitcoinToken.lockingScript.toASM(), inputSatoshis);
       return bitcoinToken.split(
         new Sig(toHex(sig)),
         new PubKey(toHex(publicKey2)),
@@ -65,80 +72,90 @@ describe('Test sCrypt contract UTXO Token In Javascript', () => {
         balanceInput1,
         outputAmount,
         new SigHashPreimage(toHex(preimage))
-      )
-    }
+      );
+    };
 
-    result = testSplit(privateKey1, 60, 40).verify()
-    expect(result.success, result.error).to.be.true
+    result = testSplit(privateKey1, 60, 40).verify();
+    expect(result.success, result.error).to.be.true;
 
     // 1 to 1 transfer
-    result = testSplit(privateKey1, 100, 0).verify()
-    expect(result.success, result.error).to.be.true
+    result = testSplit(privateKey1, 100, 0).verify();
+    expect(result.success, result.error).to.be.true;
 
     // balance0 cannot be 0
-    result = testSplit(privateKey1, 0, 100).verify()
-    expect(result.success, result.error).to.be.false
-    
+    result = testSplit(privateKey1, 0, 100).verify();
+    expect(result.success, result.error).to.be.false;
+
     // unauthorized key
-    result = testSplit(privateKey2, 60, 40).verify()
-    expect(result.success, result.error).to.be.false
-    
+    result = testSplit(privateKey2, 60, 40).verify();
+    expect(result.success, result.error).to.be.false;
+
     // mismatch with preimage
-    result = testSplit(privateKey1, 60, 40, 60 - 1, 40).verify()
-    expect(result.success, result.error).to.be.false
-    result = testSplit(privateKey1, 60, 40, 60, 40 + 1).verify()
-    expect(result.success, result.error).to.be.false
-    
+    result = testSplit(privateKey1, 60, 40, 60 - 1, 40).verify();
+    expect(result.success, result.error).to.be.false;
+    result = testSplit(privateKey1, 60, 40, 60, 40 + 1).verify();
+    expect(result.success, result.error).to.be.false;
+
     // token imbalance after splitting
-    result = testSplit(privateKey1, 60 + 1, 40).verify()
-    expect(result.success, result.error).to.be.false
-    result = testSplit(privateKey1, 60, 40 - 1).verify()
-    expect(result.success, result.error).to.be.false
+    result = testSplit(privateKey1, 60 + 1, 40).verify();
+    expect(result.success, result.error).to.be.false;
+    result = testSplit(privateKey1, 60, 40 - 1).verify();
+    expect(result.success, result.error).to.be.false;
   });
 
-  it('should succeed when two tokens are merged', () => {
-    const x0 = 10
-    const x1 = 50
-    const expectedBalance0 = x0 + x1
-    const dataPart0 = toHex(publicKey1) + num2bin(x0, DataLen) + num2bin(x1, DataLen)
-    const lockingScript0 = [lockingScriptCodePart, dataPart0].join(' ')
-    
-    const y0 = 13
-    const y1 = 27
-    const expectedBalance1 = y0 + y1
-    const dataPart1 = toHex(publicKey2) + num2bin(y0, DataLen) + num2bin(y1, DataLen)
-    const lockingScript1 = [lockingScriptCodePart, dataPart1].join(' ')
-    
-    const testMerge = (inputIndex, balance0, balance1) => {
-      tx_ = new bsv.Transaction()
+  it("should succeed when two tokens are merged", () => {
+    const x0 = 10;
+    const x1 = 50;
+    const expectedBalance0 = x0 + x1;
+    const dataPart0 = toHex(publicKey1) + num2bin(x0, DataLen) + num2bin(x1, DataLen);
+    const lockingScript0 = [lockingScriptCodePart, dataPart0].join(" ");
 
-      tx_.addInput(new bsv.Transaction.Input({
-        prevTxId: dummyTxId,
-        outputIndex: 0,
-        script: ''
-      }), bsv.Script.fromASM(lockingScript0), inputSatoshis)
-      
-      tx_.addInput(new bsv.Transaction.Input({
-        prevTxId: dummyTxId,
-        outputIndex: 1,
-        script: ''
-      }), bsv.Script.fromASM(lockingScript1), inputSatoshis)
+    const y0 = 13;
+    const y1 = 27;
+    const expectedBalance1 = y0 + y1;
+    const dataPart1 = toHex(publicKey2) + num2bin(y0, DataLen) + num2bin(y1, DataLen);
+    const lockingScript1 = [lockingScriptCodePart, dataPart1].join(" ");
+
+    const testMerge = (inputIndex, balance0, balance1) => {
+      tx = new bsv.Transaction();
+
+      tx.addInput(
+        new bsv.Transaction.Input({
+          prevTxId: dummyTxId,
+          outputIndex: 0,
+          script: "",
+        }),
+        bsv.Script.fromASM(lockingScript0),
+        inputSatoshis
+      );
+
+      tx.addInput(
+        new bsv.Transaction.Input({
+          prevTxId: dummyTxId,
+          outputIndex: 1,
+          script: "",
+        }),
+        bsv.Script.fromASM(lockingScript1),
+        inputSatoshis
+      );
 
       // use reversed txid in outpoint
-      const prevouts = reversedDummyTxId + num2bin(0, 4) + reversedDummyTxId + num2bin(1, 4)
+      const prevouts = reversedDummyTxId + num2bin(0, 4) + reversedDummyTxId + num2bin(1, 4);
 
-      const newLockingScript0 = [lockingScriptCodePart, toHex(publicKey3) + num2bin(balance0, DataLen) + num2bin(balance1, DataLen)].join(' ')
-      tx_.addOutput(new bsv.Transaction.Output({
-        script: bsv.Script.fromASM(newLockingScript0),
-        satoshis: outputAmount
-      }))
+      const newLockingScript0 = [lockingScriptCodePart, toHex(publicKey3) + num2bin(balance0, DataLen) + num2bin(balance1, DataLen)].join(" ");
+      tx.addOutput(
+        new bsv.Transaction.Output({
+          script: bsv.Script.fromASM(newLockingScript0),
+          satoshis: outputAmount,
+        })
+      );
 
-      bitcoinToken.txContext = { tx: tx_, inputIndex, inputSatoshis }
+      bitcoinToken.txContext = { tx: tx, inputIndex, inputSatoshis };
 
-      bitcoinToken.setDataPart(inputIndex == 0 ? dataPart0 : dataPart1)
-      
-      const preimage = getPreimage(tx_, inputIndex == 0 ? lockingScript0 : lockingScript1, inputSatoshis, inputIndex)
-      const sig = signTx(tx_, inputIndex == 0 ? privateKey1 : privateKey2, inputIndex == 0 ? lockingScript0 : lockingScript1, inputSatoshis, inputIndex)
+      bitcoinToken.setDataPart(inputIndex == 0 ? dataPart0 : dataPart1);
+
+      const preimage = getPreimage(tx, inputIndex == 0 ? lockingScript0 : lockingScript1, inputSatoshis, inputIndex);
+      const sig = signTx(tx, inputIndex == 0 ? privateKey1 : privateKey2, inputIndex == 0 ? lockingScript0 : lockingScript1, inputSatoshis, inputIndex);
       return bitcoinToken.merge(
         new Sig(toHex(sig)),
         new PubKey(toHex(publicKey3)),
@@ -146,63 +163,64 @@ describe('Test sCrypt contract UTXO Token In Javascript', () => {
         inputIndex == 0 ? balance1 : balance0,
         outputAmount,
         new SigHashPreimage(toHex(preimage))
-      )
-    }
+      );
+    };
 
     // since there are multiple inputs, we have to explicitly set inputIndex of the context
     // input0 only checks balance0
-    result = testMerge(0, expectedBalance0, expectedBalance1 + 1).verify({ inputIndex: 0 })
-    expect(result.success, result.error).to.be.true
-    result = testMerge(0, expectedBalance0 - 1, expectedBalance1).verify({ inputIndex: 0 })
-    expect(result.success, result.error).to.be.false
-    
+    result = testMerge(0, expectedBalance0, expectedBalance1 + 1).verify({ inputIndex: 0 });
+    expect(result.success, result.error).to.be.true;
+    result = testMerge(0, expectedBalance0 - 1, expectedBalance1).verify({ inputIndex: 0 });
+    expect(result.success, result.error).to.be.false;
+
     // input1 only checks balance1
-    result = testMerge(1, expectedBalance0 - 1, expectedBalance1).verify({ inputIndex: 1 })
-    expect(result.success, result.error).to.be.true
-    result = testMerge(1, expectedBalance0, expectedBalance1 + 1).verify({ inputIndex: 1 })
-    expect(result.success, result.error).to.be.false
-    
+    result = testMerge(1, expectedBalance0 - 1, expectedBalance1).verify({ inputIndex: 1 });
+    expect(result.success, result.error).to.be.true;
+    result = testMerge(1, expectedBalance0, expectedBalance1 + 1).verify({ inputIndex: 1 });
+    expect(result.success, result.error).to.be.false;
+
     // both balance0 and balance1 have to be right to pass both checks of input0 and input1
-    result = testMerge(0, expectedBalance0, expectedBalance1).verify({ inputIndex: 0 })
-    expect(result.success, result.error).to.be.true
-    result = testMerge(1, expectedBalance0, expectedBalance1).verify({ inputIndex: 1 })
-    expect(result.success, result.error).to.be.true
+    result = testMerge(0, expectedBalance0, expectedBalance1).verify({ inputIndex: 0 });
+    expect(result.success, result.error).to.be.true;
+    result = testMerge(1, expectedBalance0, expectedBalance1).verify({ inputIndex: 1 });
+    expect(result.success, result.error).to.be.true;
   });
 
-  it('should succeed when one token UTXO is burnt', () => {
+  it("should succeed when one token UTXO is burnt", () => {
     // burn 100 tokens
-    bitcoinToken.setDataPart(toHex(publicKey1) + num2bin(10, DataLen) + num2bin(90, DataLen))
-    
-    const testBurn = (privKey) => {
-      tx_ = new bsv.Transaction()
+    bitcoinToken.setDataPart(toHex(publicKey1) + num2bin(10, DataLen) + num2bin(90, DataLen));
 
-      tx_.addInput(new bsv.Transaction.Input({
-        prevTxId: dummyTxId,
-        outputIndex: 0,
-        script: ''
-      }), bsv.Script.fromASM(bitcoinToken.lockingScript.toASM()), inputSatoshis)
+    const testBurn = (privKey) => {
+      tx = new bsv.Transaction();
+
+      tx.addInput(
+        new bsv.Transaction.Input({
+          prevTxId: dummyTxId,
+          outputIndex: 0,
+          script: "",
+        }),
+        bsv.Script.fromASM(bitcoinToken.lockingScript.toASM()),
+        inputSatoshis
+      );
 
       // p2pkh
-      tx_.addOutput(new bsv.Transaction.Output({
-        script: bsv.Script.buildPublicKeyHashOut(privateKey1.toAddress()),
-        satoshis: outputAmount
-      }))
-      
-      const preimage = getPreimage(tx_, bitcoinToken.lockingScript.toASM(), inputSatoshis, inputIndex)
-      const sig = signTx(tx_, privKey, bitcoinToken.lockingScript.toASM(), inputSatoshis)
-      return bitcoinToken.burn(
-        new Sig(toHex(sig)),
-        new Ripemd160(toHex(pkh1)),
-        outputAmount,
-        new SigHashPreimage(toHex(preimage))
-      )
-    }
+      tx.addOutput(
+        new bsv.Transaction.Output({
+          script: bsv.Script.buildPublicKeyHashOut(privateKey1.toAddress()),
+          satoshis: outputAmount,
+        })
+      );
 
-    result = testBurn(privateKey1).verify({ tx: tx_, inputIndex, inputSatoshis })
-    expect(result.success, result.error).to.be.true
-    
+      const preimage = getPreimage(tx, bitcoinToken.lockingScript.toASM(), inputSatoshis, inputIndex);
+      const sig = signTx(tx, privKey, bitcoinToken.lockingScript.toASM(), inputSatoshis);
+      return bitcoinToken.burn(new Sig(toHex(sig)), new Ripemd160(toHex(pkh1)), outputAmount, new SigHashPreimage(toHex(preimage)));
+    };
+
+    result = testBurn(privateKey1).verify({ tx: tx, inputIndex, inputSatoshis });
+    expect(result.success, result.error).to.be.true;
+
     // unauthorized key
-    result = testBurn(privateKey2).verify({ tx: tx_, inputIndex, inputSatoshis })
-    expect(result.success, result.error).to.be.false
+    result = testBurn(privateKey2).verify({ tx: tx, inputIndex, inputSatoshis });
+    expect(result.success, result.error).to.be.false;
   });
 });
