@@ -23,6 +23,39 @@ import "satotx.scrypt";
  burn 函数用于用户销毁自己的1个nft，输入为1个TRANSFER，输出为1个找零
 */
 
+
+contract Payload {
+  int dataStart;
+  bytes codePart;
+
+  bytes genesisOutpoint;
+  Ripemd160 ownerPkh;
+  int tokenId;
+  bytes action;
+
+  constructor(bytes scriptCode) {
+    this.dataStart = len(scriptCode) - 65;
+    this.codePart = scriptCode[ : this.dataStart];
+
+    bytes dataPart = scriptCode[this.dataStart : ];
+
+    this.genesisOutpoint = dataPart[:36];
+    this.ownerPkh = Ripemd160(dataPart[36:36+20]);
+    this.tokenId = unpack(dataPart[56:56+8]);
+    this.action = dataPart[64:65];
+  }
+
+  function dump() : bytes {
+    bytes payload = this.genesisOutpoint +
+    this.ownerPkh +
+    num2bin(this.tokenId, Util.OutputValueLen) +
+    this.action;
+
+    return this.codePart + payload;
+  }
+}
+
+
 contract NFT {
   int rabinPubKey;
 
@@ -40,41 +73,30 @@ contract NFT {
     // this ensures the preimage is for the current tx
     require(Util.checkPreimageSigHashType(txPreimage, sigHashType));
 
-    // issue必须是第0个output输出
-    bytes thisOutpoint = Util.outpoint(txPreimage);
-    require(thisOutpoint[32 : 36] == num2bin(0, 4));
-
     // read previous locking script
     bytes lockingScript = Util.scriptCode(txPreimage);
-    int scriptLen = len(lockingScript);
+    Payload pl = new Payload(lockingScript);
 
     // action must be issue
-    bytes matchAction = lockingScript[scriptLen - 1 : ];
-    require(matchAction == NFT.ISSUE);
+    require(pl.action == NFT.ISSUE);
 
-    // 数据起始
-    int dataStart = scriptLen -(32 + 4 + Util.PubKeyHashLen + 8 + 1);
-
-    // 溯源
-    bytes genesisOutpoint = lockingScript[dataStart : dataStart + 36];
     SatoTx st = new SatoTx(this.rabinPubKey, txPreimage, preTxOutpointSig, preTxOutpointMsg, preTxOutpointPadding, 0, b'', b'');
-    require(st.verifyGenesis(lockingScript, genesisOutpoint, dataStart));
+    require(st.verifyGenesis(lockingScript, pl.genesisOutpoint, pl.dataStart));
 
     // authorize
-    Ripemd160 issuerPkh = Ripemd160(lockingScript[dataStart + 32 + 4 : dataStart + 32 + 4 + Util.PubKeyHashLen]);
-    require(hash160(issuer) == issuerPkh);
+    require(hash160(issuer) == pl.ownerPkh);
     require(checkSig(issuerSig, issuer));
 
-    // persist contract code part, including op_return itself
-    bytes codePart = lockingScript[ : dataStart];
-
     // 业务操作
-    int tokenId = unpack(lockingScript[scriptLen - 1 - 8 : scriptLen - 1]);
     int satoshiIssue = Util.value(txPreimage);
-    bytes outputScript0 = codePart + genesisOutpoint + issuerPkh + num2bin(tokenId + 1, Util.OutputValueLen) + NFT.ISSUE;
+
+    pl.tokenId = pl.tokenId + 1;
+    bytes outputScript0 = pl.dump();
     bytes output0 = Util.buildOutput(outputScript0, satoshiIssue);
 
-    bytes outputScript1 = codePart + genesisOutpoint + receiverPkh + num2bin(tokenId + 1, Util.OutputValueLen) + NFT.TRANSFER;
+    pl.ownerPkh = receiverPkh;
+    pl.action = NFT.TRANSFER;
+    bytes outputScript1 = pl.dump();
     bytes output1 = Util.buildOutput(outputScript1, satoshiAmount1);
 
     bytes lockingScript2 = Util.buildPublicKeyHashScript(changePkh);
@@ -98,32 +120,22 @@ contract NFT {
 
     // read previous locking script
     bytes lockingScript = Util.scriptCode(txPreimage);
-    int scriptLen = len(lockingScript);
+    Payload pl = new Payload(lockingScript);
 
     // action must be transfer
-    bytes matchAction = lockingScript[scriptLen - 1 : ];
-    require(matchAction == NFT.TRANSFER);
-
-    // 数据起始
-    int dataStart = scriptLen -(32 + 4 + Util.PubKeyHashLen + 8 + 1);
+    require(pl.action == NFT.TRANSFER);
 
     // 溯源
     SatoTx st = new SatoTx(this.rabinPubKey, txPreimage, preTxOutpointSig, preTxOutpointMsg, preTxOutpointPadding, 0, b'', b'');
-    require(st.verifyGenesis(lockingScript, SatoTx.disableUtxoInGenesisTx, dataStart));
+    require(st.verifyGenesis(lockingScript, SatoTx.disableUtxoInGenesisTx, pl.dataStart));
 
     // authorize
-    Ripemd160 senderPkh = Ripemd160(lockingScript[dataStart + 32 + 4 : dataStart + 32 + 4 + Util.PubKeyHashLen]);
-    require(hash160(sender) == senderPkh);
+    require(hash160(sender) == pl.ownerPkh);
     require(checkSig(senderSig, sender));
 
-    bytes codePart = lockingScript[ : dataStart];
-
     // 业务操作
-    bytes tokenId = lockingScript[scriptLen - 1 - 8 : scriptLen - 1];
-    // 溯源点
-    bytes genesisOutpoint = lockingScript[dataStart : dataStart + 36];
-
-    bytes outputScript0 = codePart + genesisOutpoint + receiverPkh + tokenId + NFT.TRANSFER;
+    pl.ownerPkh = receiverPkh;
+    bytes outputScript0 = pl.dump();
     bytes output0 = Util.buildOutput(outputScript0, satoshiAmount0);
 
     bytes lockingScript1 = Util.buildPublicKeyHashScript(changePkh);
@@ -144,23 +156,17 @@ contract NFT {
 
     // read previous locking script
     bytes lockingScript = Util.scriptCode(txPreimage);
-    int scriptLen = len(lockingScript);
+    Payload pl = new Payload(lockingScript);
 
     // action must be transfer
-    bytes matchAction = lockingScript[scriptLen - 1 : ];
-    require(matchAction == NFT.TRANSFER);
-
-    int dataStart = scriptLen -(32 + 4 + Util.PubKeyHashLen + 8 + 1);
+    require(pl.action == NFT.TRANSFER);
 
     // authorize
-    Ripemd160 ownerPkh = Ripemd160(lockingScript[dataStart + 32 + 4 : dataStart + 32 + 4 + Util.PubKeyHashLen]);
-    require(hash160(owner) == ownerPkh);
+    require(hash160(owner) == pl.ownerPkh);
     require(checkSig(ownerSig, owner));
 
     // send to a P2PKH script
     bytes lockingScript0 = Util.buildPublicKeyHashScript(receiverPkh);
     bytes output0 = Util.buildOutput(lockingScript0, satoshiAmount);
     Sha256 hashOutputs = hash256(output0);
-    require(hashOutputs == Util.hashOutputs(txPreimage));
-  }
-}
+    require(hashOutputs == Util.hashOutputs(txPreimage));  }}

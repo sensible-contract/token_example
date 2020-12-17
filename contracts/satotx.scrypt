@@ -36,6 +36,8 @@ contract SatoTx {
     bytes preOutpoint = this.preTxOutpointMsg[32 : 32 + 36];
     if (preOutpoint == genesisOutpoint) {
       matchGenesis = true;
+      // 必须是第0个output输出
+      require(thisOutpoint[32 : 36] == num2bin(0, 4));
     } else {
       //必须包含lockingScript
       require(len(this.preTxOutpointMsg) > scriptOffset + dataStart + 36);
