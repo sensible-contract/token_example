@@ -3,58 +3,60 @@ import "rabin.scrypt";
 import "satotx.scrypt";
 
 /*
- A safty NFT protocol
-
- locking script:
-
- issue:
-
-   codePart, GenesisOutpoint, issuerPkh, tokenId, ISSUE
-
- transfer:
-
-   codePart, GenesisOutpoint, ownerPkh, tokenId, TRANSFER
-
-
- issue 函数允许发行人按tokenId从0递增发行nft，输出为一个ISSUE，一个TRANSFER
-
- transfer 函数允许用户移动自己的nft，输出为一个TRANSFER，一个找零.
-
- burn 函数用于用户销毁自己的1个nft，输入为1个TRANSFER，输出为1个找零
+* A safty NFT protocol
+*
+* locking script:
+*
+* issue:
+*
+*   codePart, GenesisOutpoint, issuerPkh, tokenId, ISSUE
+*
+* transfer:
+*
+*   codePart, GenesisOutpoint, ownerPkh, tokenId, TRANSFER
+*
+*
+* issue 函数允许发行人按tokenId从0递增发行nft，输出为一个ISSUE，一个TRANSFER
+*
+* transfer 函数允许用户移动自己的nft，输出为一个TRANSFER，一个找零.
+*
+* burn 函数用于用户销毁自己的1个nft，输入为1个TRANSFER，输出为1个找零
 */
-
 
 contract Payload {
   int dataStart;
   bytes codePart;
 
   bytes genesisOutpoint;
+  bytes genesisOutputIdx;
   Ripemd160 ownerPkh;
   int tokenId;
-  bytes action;
+  bytes dataType;
 
   constructor(bytes scriptCode) {
-    this.dataStart = len(scriptCode) - 65;
+    this.dataStart = len(scriptCode) - 69;
     this.codePart = scriptCode[ : this.dataStart];
 
     bytes dataPart = scriptCode[this.dataStart : ];
 
-    this.genesisOutpoint = dataPart[:36];
-    this.ownerPkh = Ripemd160(dataPart[36:36+20]);
-    this.tokenId = unpack(dataPart[56:56+8]);
-    this.action = dataPart[64:65];
+    /* 溯源需匹配genesisTx input的outpoint 和output的index */
+    this.genesisOutpoint = dataPart[ : 36];
+    this.genesisOutputIdx = dataPart[36 : 36 + 4];
+
+    this.ownerPkh = Ripemd160(dataPart[40 : 40 + 20]);
+    this.tokenId = unpack(dataPart[60 : 60 + 8]);
+    this.dataType = dataPart[68 : 69];
   }
 
   function dump() : bytes {
-    bytes payload = this.genesisOutpoint +
+    bytes payload = this.genesisOutpoint + this.genesisOutputIdx +
     this.ownerPkh +
     num2bin(this.tokenId, Util.OutputValueLen) +
-    this.action;
+    this.dataType;
 
     return this.codePart + payload;
   }
 }
-
 
 contract NFT {
   int rabinPubKey;
@@ -77,11 +79,11 @@ contract NFT {
     bytes lockingScript = Util.scriptCode(txPreimage);
     Payload pl = new Payload(lockingScript);
 
-    // action must be issue
-    require(pl.action == NFT.ISSUE);
+    // dataType must be issue
+    require(pl.dataType == NFT.ISSUE);
 
     SatoTx st = new SatoTx(this.rabinPubKey, txPreimage, preTxOutpointSig, preTxOutpointMsg, preTxOutpointPadding, 0, b'', b'');
-    require(st.verifyGenesis(lockingScript, pl.genesisOutpoint, pl.dataStart));
+    require(st.verifyGenesis(lockingScript, pl.genesisOutpoint, pl.genesisOutputIdx, pl.dataStart));
 
     // authorize
     require(hash160(issuer) == pl.ownerPkh);
@@ -95,7 +97,7 @@ contract NFT {
     bytes output0 = Util.buildOutput(outputScript0, satoshiIssue);
 
     pl.ownerPkh = receiverPkh;
-    pl.action = NFT.TRANSFER;
+    pl.dataType = NFT.TRANSFER;
     bytes outputScript1 = pl.dump();
     bytes output1 = Util.buildOutput(outputScript1, satoshiAmount1);
 
@@ -122,12 +124,12 @@ contract NFT {
     bytes lockingScript = Util.scriptCode(txPreimage);
     Payload pl = new Payload(lockingScript);
 
-    // action must be transfer
-    require(pl.action == NFT.TRANSFER);
+    // dataType must be transfer
+    require(pl.dataType == NFT.TRANSFER);
 
     // 溯源
     SatoTx st = new SatoTx(this.rabinPubKey, txPreimage, preTxOutpointSig, preTxOutpointMsg, preTxOutpointPadding, 0, b'', b'');
-    require(st.verifyGenesis(lockingScript, SatoTx.disableUtxoInGenesisTx, pl.dataStart));
+    require(st.verifyGenesis(lockingScript, SatoTx.disableUtxoInGenesisTx, b'', pl.dataStart));
 
     // authorize
     require(hash160(sender) == pl.ownerPkh);
@@ -158,8 +160,8 @@ contract NFT {
     bytes lockingScript = Util.scriptCode(txPreimage);
     Payload pl = new Payload(lockingScript);
 
-    // action must be transfer
-    require(pl.action == NFT.TRANSFER);
+    // dataType must be transfer
+    require(pl.dataType == NFT.TRANSFER);
 
     // authorize
     require(hash160(owner) == pl.ownerPkh);
@@ -169,4 +171,6 @@ contract NFT {
     bytes lockingScript0 = Util.buildPublicKeyHashScript(receiverPkh);
     bytes output0 = Util.buildOutput(lockingScript0, satoshiAmount);
     Sha256 hashOutputs = hash256(output0);
-    require(hashOutputs == Util.hashOutputs(txPreimage));  }}
+    require(hashOutputs == Util.hashOutputs(txPreimage));
+  }
+}

@@ -41,13 +41,13 @@ describe("Test sCrypt contract NFT In Javascript", () => {
 
   const currTokenId = 0;
 
-  // action
-  const actionIssue = "00";
-  const actionTransfer = "01";
+  // dataType
+  const dataTypeIssue = "00";
+  const dataTypeTransfer = "01";
 
   // genesis
   const genisisOutpointTxId = "ce913e7b636784f91567132ecb8dcbab48700b08eda166dc98e2ce07689fd285";
-  const genesisOutpoint = "85d29f6807cee298dc66a1ed080b7048abcb8dcb2e136715f98467637b3e91ce" + num2bin(0, DataLen4);
+  const genesisOutpointWithOutputIdx = "85d29f6807cee298dc66a1ed080b7048abcb8dcb2e136715f98467637b3e91ce" + num2bin(0, DataLen4) + num2bin(0, DataLen4);
   const genesisPreTxHex =
     "0200000001cc8e4f0c398e8a477a09ff940ae82e48d14d6786cb6fc351c90163ee52a90d4b000000006a47304402200243afe8dda86318d7a0557f9dc683a0ce64c18c1e60ba64031ef2bf64a53a8a022063e42f1e97e0bccd76600f43bbf61b8b48589d9bf3aa759a59ef266705b0c4cc012103cb8f9734f4dc2e423dad83d59f7f2e823a9ab4df0e1fa1b18690f8bd0376cd9bffffffff038e94f300000000001976a91405a24d44e37cae0f4e231514c3ad512d313b141688ac0000000000000000166a146f6d6e69000000000000001f00000001cdb2948022020000000000001976a9140b3257cef14c3c6ee1725f5edb7e1da63318fcc088ac00000000";
 
@@ -99,7 +99,7 @@ describe("Test sCrypt contract NFT In Javascript", () => {
       );
 
       // genesisLockingScript
-      const newLockingScript = [lockingScriptCodePart, genesisOutpoint + toHex(pkhTheIssuer) + num2bin(lastTokenId, DataLen8) + actionIssue].join(" ");
+      const newLockingScript = [lockingScriptCodePart, genesisOutpointWithOutputIdx + toHex(pkhTheIssuer) + num2bin(lastTokenId, DataLen8) + dataTypeIssue].join(" ");
 
       txnew.addOutput(
         new bsv.Transaction.Output({
@@ -116,7 +116,7 @@ describe("Test sCrypt contract NFT In Javascript", () => {
       let txnew = new bsv.Transaction();
 
       // genesisLockingScript
-      const newLockingScript = [lockingScriptCodePart, genesisOutpoint + toHex(pkhTheIssuer) + num2bin(lastTokenId, DataLen8) + actionIssue].join(" ");
+      const newLockingScript = [lockingScriptCodePart, genesisOutpointWithOutputIdx + toHex(pkhTheIssuer) + num2bin(lastTokenId, DataLen8) + dataTypeIssue].join(" ");
 
       // input 0
       txnew.addInput(
@@ -141,7 +141,7 @@ describe("Test sCrypt contract NFT In Javascript", () => {
       );
 
       // output 0
-      const newLockingScript0 = [lockingScriptCodePart, genesisOutpoint + toHex(pkhTheIssuer) + num2bin(nextTokenId, DataLen8) + actionIssue].join(" ");
+      const newLockingScript0 = [lockingScriptCodePart, genesisOutpointWithOutputIdx + toHex(pkhTheIssuer) + num2bin(nextTokenId, DataLen8) + dataTypeIssue].join(" ");
       txnew.addOutput(
         new bsv.Transaction.Output({
           script: bsv.Script.fromASM(newLockingScript0),
@@ -150,7 +150,7 @@ describe("Test sCrypt contract NFT In Javascript", () => {
       );
 
       // output 1
-      const newLockingScript1 = [lockingScriptCodePart, genesisOutpoint + toHex(pkhNewReceiver) + num2bin(nextTokenId, DataLen8) + actionTransfer].join(" ");
+      const newLockingScript1 = [lockingScriptCodePart, genesisOutpointWithOutputIdx + toHex(pkhNewReceiver) + num2bin(nextTokenId, DataLen8) + dataTypeTransfer].join(" ");
       txnew.addOutput(
         new bsv.Transaction.Output({
           script: bsv.Script.fromASM(newLockingScript1),
@@ -174,7 +174,7 @@ describe("Test sCrypt contract NFT In Javascript", () => {
 
       // input 0
       // prev output 1
-      const prevTransferLockingScript1 = [lockingScriptCodePart, genesisOutpoint + toHex(pkhOwner) + num2bin(lastTokenId, DataLen8) + actionTransfer].join(" ");
+      const prevTransferLockingScript1 = [lockingScriptCodePart, genesisOutpointWithOutputIdx + toHex(pkhOwner) + num2bin(lastTokenId, DataLen8) + dataTypeTransfer].join(" ");
 
       txnew.addInput(
         new bsv.Transaction.Input({
@@ -198,7 +198,7 @@ describe("Test sCrypt contract NFT In Javascript", () => {
       );
 
       // output 0
-      const newLockingScript0 = [lockingScriptCodePart, genesisOutpoint + toHex(pkhNewReceiver) + num2bin(transferTokenId, DataLen8) + actionTransfer].join(" ");
+      const newLockingScript0 = [lockingScriptCodePart, genesisOutpointWithOutputIdx + toHex(pkhNewReceiver) + num2bin(transferTokenId, DataLen8) + dataTypeTransfer].join(" ");
       txnew.addOutput(
         new bsv.Transaction.Output({
           script: bsv.Script.fromASM(newLockingScript0),
@@ -223,7 +223,7 @@ describe("Test sCrypt contract NFT In Javascript", () => {
 
       // input 0
       // prev output 1
-      const prevTransferLockingScript1 = [lockingScriptCodePart, genesisOutpoint + toHex(pkhOwner) + num2bin(lastTokenId, DataLen8) + actionTransfer].join(" ");
+      const prevTransferLockingScript1 = [lockingScriptCodePart, genesisOutpointWithOutputIdx + toHex(pkhOwner) + num2bin(lastTokenId, DataLen8) + dataTypeTransfer].join(" ");
 
       txnew.addInput(
         new bsv.Transaction.Input({
@@ -272,7 +272,7 @@ describe("Test sCrypt contract NFT In Javascript", () => {
       let txIssue = makeTxIssue(txGenesis.id, pkhNewReceiver, pkhNewIssuer, publicKeyIssuer, currTokenId, nextTokenId);
 
       // 设置校验环境
-      token.setDataPart(genesisOutpoint + toHex(pkhGenesisIssuer) + num2bin(currTokenId, DataLen8) + actionIssue);
+      token.setDataPart(genesisOutpointWithOutputIdx + toHex(pkhGenesisIssuer) + num2bin(currTokenId, DataLen8) + dataTypeIssue);
       token.txContext = { tx: txIssue, inputIndex, inputSatoshis: 100000000 };
 
       // 计算preimage
@@ -342,7 +342,7 @@ describe("Test sCrypt contract NFT In Javascript", () => {
       let txIssue = makeTxIssue(txGenesis.id, pkhOwner1, pkhNewIssuer, publicKeyIssuer, currTokenId, currTokenId + 1);
       let txTransfer = makeTxTransfer(txIssue.id, pkhOwner1, pkhOwner2, pkOwner1, currTokenId + 1, transTokenId);
 
-      token.setDataPart(genesisOutpoint + toHex(pkhOwner1) + num2bin(currTokenId + 1, DataLen8) + actionTransfer);
+      token.setDataPart(genesisOutpointWithOutputIdx + toHex(pkhOwner1) + num2bin(currTokenId + 1, DataLen8) + dataTypeTransfer);
       token.txContext = { tx: txTransfer, inputIndex, inputSatoshis: 50000000 };
 
       // 计算preimage
@@ -429,7 +429,7 @@ describe("Test sCrypt contract NFT In Javascript", () => {
       let txIssue = makeTxIssue(txGenesis.id, pkhOwner, pkhNewIssuer, publicKeyIssuer, currTokenId, transferTokenId);
       let txTransferBurn = makeTxTransferBurn(txIssue.id, pkhOwner, pkOwner, transferTokenId);
 
-      token.setDataPart(genesisOutpoint + toHex(pkhOwner) + num2bin(transferTokenId, DataLen8) + actionTransfer);
+      token.setDataPart(genesisOutpointWithOutputIdx + toHex(pkhOwner) + num2bin(transferTokenId, DataLen8) + dataTypeTransfer);
       token.txContext = {
         tx: txTransferBurn,
         inputIndex,

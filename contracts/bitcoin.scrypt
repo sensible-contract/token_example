@@ -3,80 +3,89 @@ import "rabin.scrypt";
 import "satotx.scrypt";
 
 /**
- A token protocol based on UTXO model
-
- locking script:
-
- mint:
-
-   codePart, GenesisOutpoint, blockHeader, blockHeight, MINT
-
- split:
- merge:
-
-   codePart, GenesisOutpoint, ownerPkh, tokenAmount, TRANSFER
-
-
- mint函数允许公开按blockHeight递增发行token，输入为1个MINT，输出为1个MINT，1个TRANSFER
-      发行规则和Bitcoin一致：
-      需要提供blockHeader, 后一个blockHeader中必须包括前一个blockHeader的hash256；
-      满足难度约束； 每次发行量按210000块减半；初始一次为50个，但没有实现交易费。
-
- split函数允许用户分割token，输入为1个TRANSFER，输出为2个TRANSFER。
- merge函数允许用户合并2个token，输入为2个TRANSFER，输出为1个TRANSFER.
-
- burn 函数用于销毁用户的token，输入为1个TRANSFER，输出为1个找零
+* A token protocol based on UTXO model
+*
+* locking script:
+*
+* mint:
+*
+*   codePart, GenesisOutpoint, blockHeader, blockHeight, MINT
+*
+* split:
+* merge:
+*
+*   codePart, GenesisOutpoint, ownerPkh, tokenAmount, TRANSFER
+*
+*
+* mint函数允许公开按blockHeight递增发行token，输入为1个MINT，输出为1个MINT，1个TRANSFER
+*      发行规则和Bitcoin一致：
+*      需要提供blockHeader, 后一个blockHeader中必须包括前一个blockHeader的hash256；
+*      满足难度约束； 每次发行量按210000块减半；初始一次为50个，但没有实现交易费。
+*
+* split函数允许用户分割token，输入为1个TRANSFER，输出为2个TRANSFER。
+* merge函数允许用户合并2个token，输入为2个TRANSFER，输出为1个TRANSFER.
+*
+* burn 函数用于销毁用户的token，输入为1个TRANSFER，输出为1个找零
 */
 
 contract Payload {
+  /* base */
   int dataStart;
   bytes codePart;
-
   bytes genesisOutpoint;
-  Ripemd160 ownerPkh;
-  int amount;
-  bytes action;
+  bytes genesisOutputIdx;
+  bytes dataType;
 
+  /* mint */
   bytes blockHeader;
   int blockHeight;
 
+  /* transfer */
+  Ripemd160 ownerPkh;
+  int amount;
+
   /* fixme: use len after op_return */
-  static int mintLen = 125;
-  static int transferLen = 65;
+  static int mintLen = 129;
+  static int transferLen = 69;
   static bytes MINT = b'00';
   static bytes TRANSFER = b'01';
 
-  constructor(bytes action, bytes scriptCode) {
+  constructor(bytes scriptCode) {
     int scriptLen = len(scriptCode);
-    if (action == Payload.MINT) {
+    this.dataType = scriptCode[scriptLen - 1 : ];
+
+    /* support many kinds of data type */
+    if (this.dataType == Payload.MINT) {
       this.dataStart = scriptLen - Payload.mintLen;
+      this.codePart = scriptCode[ : this.dataStart];
+      bytes dataPart = scriptCode[this.dataStart : ];
+      this.genesisOutpoint = dataPart[ : 36];
+      this.genesisOutputIdx = dataPart[36 : 36 + 4];
+      this.ownerPkh = Ripemd160(dataPart[40 : 40 + 20]);
+      this.amount = unpack(dataPart[60 : 60 + 8]);
     } else {
       this.dataStart = scriptLen - Payload.transferLen;
+      this.codePart = scriptCode[ : this.dataStart];
+      bytes dataPart = scriptCode[this.dataStart : ];
+      this.genesisOutpoint = dataPart[ : 36];
+      this.genesisOutputIdx = dataPart[36 : 36 + 4];
+      this.blockHeader = dataPart[40 : 40 + 80];
+      this.blockHeight = unpack(dataPart[120 : 120 + 8]);
     }
-    this.codePart = scriptCode[ : this.dataStart];
-    bytes dataPart = scriptCode[this.dataStart : ];
-
-    this.genesisOutpoint = dataPart[ : 36];
-    if (action == Payload.MINT) {
-      this.ownerPkh = Ripemd160(dataPart[36 : 36 + 20]);
-      this.amount = unpack(dataPart[56 : 56 + 8]);
-    } else {
-      this.blockHeader = dataPart[36 : 36 + 80];
-      this.blockHeight = unpack(dataPart[116 : 116 + 8]);
-    }
-    this.action = dataPart[scriptLen - 1 : ];
   }
 
   function dump() : bytes {
-    bytes payload =(this.genesisOutpoint +
-      this.ownerPkh +
-      num2bin(this.amount, Util.OutputValueLen) +
-      this.action);
-
-    return this.codePart + payload;
+    bytes payload = b'';
+    if (this.dataType == Payload.MINT) {
+      payload = this.blockHeader +
+      num2bin(this.blockHeight, Util.OutputValueLen);
+    } else {
+      payload = this.ownerPkh +
+      num2bin(this.amount, Util.OutputValueLen);
+    }
+    return this.codePart + this.genesisOutpoint + this.genesisOutputIdx + payload + this.dataType;
   }
 }
-
 
 contract Bitcoin {
   int rabinPubKey;
@@ -96,14 +105,14 @@ contract Bitcoin {
 
     // read previous locking script
     bytes lockingScript = Util.scriptCode(txPreimage);
-    Payload pl = new Payload(Payload.MINT, lockingScript);
+    Payload pl = new Payload(lockingScript);
 
-    // action must be mint
-    require(pl.action == Payload.MINT);
+    // dataType must be mint
+    require(pl.dataType == Payload.MINT);
 
     // 溯源
     SatoTx st = new SatoTx(this.rabinPubKey, txPreimage, preTxOutpointSig, preTxOutpointMsg, preTxOutpointPadding, 0, b'', b'');
-    require(st.verifyGenesis(lockingScript, pl.genesisOutpoint, pl.dataStart));
+    require(st.verifyGenesis(lockingScript, pl.genesisOutpoint, pl.genesisOutputIdx, pl.dataStart));
 
     // 计算token subsidy
     int halvings = pl.blockHeight / 210000;
@@ -119,7 +128,7 @@ contract Bitcoin {
 
     pl.ownerPkh = receiverPkh;
     pl.amount = unpack(tokenAmount);
-    pl.action = Payload.TRANSFER;
+    pl.dataType = Payload.TRANSFER;
     bytes outputScript1 = pl.dump();
     bytes output1 = Util.buildOutput(outputScript1, satoshiAmount1);
 
@@ -148,24 +157,20 @@ contract Bitcoin {
 
     // read previous locking script
     bytes lockingScript = Util.scriptCode(txPreimage);
-    Payload pl = new Payload(Payload.TRANSFER, lockingScript);
+    Payload pl = new Payload(lockingScript);
 
-    // action must be transfer
-    require(pl.action == Payload.TRANSFER);
-
-    // 溯源
-    SatoTx st = new SatoTx(this.rabinPubKey, txPreimage, preTxOutpointSig, preTxOutpointMsg, preTxOutpointPadding, 0, b'', b'');
-    require(st.verifyGenesis(lockingScript, SatoTx.disableUtxoInGenesisTx, pl.dataStart));
-
-    // 业务操作
+    // dataType must be transfer
+    require(pl.dataType == Payload.TRANSFER);
     // authorize
     require(hash160(sender) == pl.ownerPkh);
     require(checkSig(senderSig, sender));
-
-    // split
     require(pl.amount == tokenAmount0 + tokenAmount1);
 
-    // setting first balance as 0 is just a convention, not a requirement
+    // 溯源
+    SatoTx st = new SatoTx(this.rabinPubKey, txPreimage, preTxOutpointSig, preTxOutpointMsg, preTxOutpointPadding, 0, b'', b'');
+    require(st.verifyGenesis(lockingScript, SatoTx.disableUtxoInGenesisTx, b'', pl.dataStart));
+
+    // 业务操作
     pl.ownerPkh = receiver0Pkh;
     pl.amount = tokenAmount0;
     bytes outputScript0 = pl.dump();
@@ -197,28 +202,30 @@ contract Bitcoin {
 
     // read previous locking script
     bytes lockingScript = Util.scriptCode(txPreimage);
-    Payload pl = new Payload(Payload.TRANSFER, lockingScript);
+    Payload pl = new Payload(lockingScript);
 
-    // action must be transfer
-    require(pl.action == Payload.TRANSFER);
+    // dataType must be transfer
+    require(pl.dataType == Payload.TRANSFER);
 
-    SatoTx st = new SatoTx(this.rabinPubKey, txPreimage, preTxOutpointSig, preTxOutpointMsg, preTxOutpointPadding,
-      sideTxUtxoSig, sideTxUtxoMsg, sideTxUtxoPadding);
-    // 溯源
-    require(st.verifyGenesis(lockingScript, SatoTx.disableUtxoInGenesisTx, pl.dataStart));
-    // 排查
-    require(st.verifySide(lockingScript, prevouts, pl.dataStart));
-
-    int otherTokenAmount = unpack(sideTxUtxoMsg[44 + pl.dataStart + 32 + 4 + Util.PubKeyHashLen : 44 + pl.dataStart + 32 + 4 + Util.PubKeyHashLen + 8]);
-
-    // 业务操作
     // authorize
     require(hash160(sender) == pl.ownerPkh);
     require(checkSig(senderSig, sender));
 
+    // source
+    SatoTx st = new SatoTx(this.rabinPubKey, txPreimage, preTxOutpointSig, preTxOutpointMsg, preTxOutpointPadding,
+      sideTxUtxoSig, sideTxUtxoMsg, sideTxUtxoPadding);
+    require(st.verifyGenesis(lockingScript, SatoTx.disableUtxoInGenesisTx, b'', pl.dataStart));
+    // side check
+    require(st.verifySide(lockingScript, prevouts, pl.dataStart));
+
+    Payload plOther = new Payload(sideTxUtxoMsg[44 : ]);
+    /* other scriptCode */
+    // dataType must be transfer
+    require(plOther.dataType == Payload.TRANSFER);
+
     // merge
     pl.ownerPkh = receiverPkh;
-    pl.amount = pl.amount + otherTokenAmount;
+    pl.amount = pl.amount + plOther.amount;
     bytes outputScript0 = pl.dump();
     bytes output0 = Util.buildOutput(outputScript0, satoshiAmount0);
 
@@ -240,10 +247,10 @@ contract Bitcoin {
 
     // read previous locking script
     bytes lockingScript = Util.scriptCode(txPreimage);
-    Payload pl = new Payload(Payload.TRANSFER, lockingScript);
+    Payload pl = new Payload(lockingScript);
 
-    // action must be transfer
-    require(pl.action == Payload.TRANSFER);
+    // dataType must be transfer
+    require(pl.dataType == Payload.TRANSFER);
 
     // authorize
     require(hash160(sender) == pl.ownerPkh);
