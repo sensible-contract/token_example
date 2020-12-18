@@ -9,12 +9,12 @@ import "satotx.scrypt";
 *
 * mint:
 *
-*   codePart, GenesisOutpoint, blockHeader, blockHeight, MINT
+*   codePart, blockHeader, blockHeight, MINT
 *
 * split:
 * merge:
 *
-*   codePart, GenesisOutpoint, ownerPkh, tokenAmount, TRANSFER
+*   codePart, ownerPkh, tokenAmount, TRANSFER
 *
 *
 * mint函数允许公开按blockHeight递增发行token，输入为1个MINT，输出为1个MINT，1个TRANSFER
@@ -32,8 +32,6 @@ contract Payload {
   /* base */
   int dataStart;
   bytes codePart;
-  bytes genesisOutpoint;
-  bytes genesisOutputIdx;
   bytes dataType;
 
   /* mint */
@@ -44,11 +42,13 @@ contract Payload {
   Ripemd160 ownerPkh;
   int amount;
 
-  /* fixme: use len after op_return */
-  static int mintLen = 129;
-  static int transferLen = 69;
+  static int mintLen = 88;
   static bytes MINT = b'00';
+  static bytes mintPrefix = b'4c58';
+
+  static int transferLen = 29;
   static bytes TRANSFER = b'01';
+  static bytes transferPrefix = b'1d';
 
   constructor(bytes scriptCode) {
     int scriptLen = len(scriptCode);
@@ -56,39 +56,43 @@ contract Payload {
 
     /* support many kinds of data type */
     if (this.dataType == Payload.MINT) {
+      /* part */
       this.dataStart = scriptLen - Payload.mintLen;
-      this.codePart = scriptCode[ : this.dataStart];
+      this.codePart = scriptCode[ : this.dataStart - 2];
       bytes dataPart = scriptCode[this.dataStart : ];
-      this.genesisOutpoint = dataPart[ : 36];
-      this.genesisOutputIdx = dataPart[36 : 36 + 4];
-      this.ownerPkh = Ripemd160(dataPart[40 : 40 + 20]);
-      this.amount = unpack(dataPart[60 : 60 + 8]);
+      /* data: */
+      this.ownerPkh = Ripemd160(dataPart[ : 20]);
+      this.amount = unpack(dataPart[20 : 20 + 8]);
     } else {
+      /* part */
       this.dataStart = scriptLen - Payload.transferLen;
-      this.codePart = scriptCode[ : this.dataStart];
+      this.codePart = scriptCode[ : this.dataStart - 1];
       bytes dataPart = scriptCode[this.dataStart : ];
-      this.genesisOutpoint = dataPart[ : 36];
-      this.genesisOutputIdx = dataPart[36 : 36 + 4];
-      this.blockHeader = dataPart[40 : 40 + 80];
-      this.blockHeight = unpack(dataPart[120 : 120 + 8]);
+      /* data: */
+      this.blockHeader = dataPart[: 80];
+      this.blockHeight = unpack(dataPart[80 : 80 + 8]);
     }
   }
 
   function dump() : bytes {
     bytes payload = b'';
     if (this.dataType == Payload.MINT) {
-      payload = this.blockHeader +
-      num2bin(this.blockHeight, Util.OutputValueLen);
+      payload = Payload.mintPrefix +
+      this.blockHeader + num2bin(this.blockHeight, Util.OutputValueLen) +
+      this.dataType;
     } else {
-      payload = this.ownerPkh +
-      num2bin(this.amount, Util.OutputValueLen);
+      payload = Payload.transferPrefix +
+      this.ownerPkh + num2bin(this.amount, Util.OutputValueLen) +
+      this.dataType;
     }
-    return this.codePart + this.genesisOutpoint + this.genesisOutputIdx + payload + this.dataType;
+    return this.codePart + payload;
   }
 }
 
 contract Bitcoin {
   int rabinPubKey;
+  bytes genesisOutpoint;
+  bytes genesisOutputIdx;
 
   /* mint */
   public function mint(SigHashPreimage txPreimage,
@@ -112,7 +116,7 @@ contract Bitcoin {
 
     // 溯源
     SatoTx st = new SatoTx(this.rabinPubKey, txPreimage, preTxOutpointSig, preTxOutpointMsg, preTxOutpointPadding, 0, b'', b'');
-    require(st.verifyGenesis(lockingScript, pl.genesisOutpoint, pl.genesisOutputIdx, pl.dataStart));
+    require(st.verifyGenesis(pl.codePart, this.genesisOutpoint, this.genesisOutputIdx));
 
     // 计算token subsidy
     int halvings = pl.blockHeight / 210000;
@@ -168,7 +172,7 @@ contract Bitcoin {
 
     // 溯源
     SatoTx st = new SatoTx(this.rabinPubKey, txPreimage, preTxOutpointSig, preTxOutpointMsg, preTxOutpointPadding, 0, b'', b'');
-    require(st.verifyGenesis(lockingScript, SatoTx.disableUtxoInGenesisTx, b'', pl.dataStart));
+    require(st.verifyGenesis(pl.codePart, SatoTx.disableUtxoInGenesisTx, b''));
 
     // 业务操作
     pl.ownerPkh = receiver0Pkh;
@@ -214,9 +218,9 @@ contract Bitcoin {
     // source
     SatoTx st = new SatoTx(this.rabinPubKey, txPreimage, preTxOutpointSig, preTxOutpointMsg, preTxOutpointPadding,
       sideTxUtxoSig, sideTxUtxoMsg, sideTxUtxoPadding);
-    require(st.verifyGenesis(lockingScript, SatoTx.disableUtxoInGenesisTx, b'', pl.dataStart));
+    require(st.verifyGenesis(pl.codePart, SatoTx.disableUtxoInGenesisTx, b''));
     // side check
-    require(st.verifySide(lockingScript, prevouts, pl.dataStart));
+    require(st.verifySide(pl.codePart, prevouts));
 
     Payload plOther = new Payload(sideTxUtxoMsg[44 : ]);
     /* other scriptCode */
