@@ -9,12 +9,12 @@ import "satotx.scrypt";
 *
 * mint:
 *
-*   codePart, blockHeader, blockHeight, MINT
+*   codePart, GenesisPart, blockHeader, blockHeight, MINT
 *
 * split:
 * merge:
 *
-*   codePart, ownerPkh, tokenAmount, TRANSFER
+*   codePart, GenesisPart, ownerPkh, tokenAmount, TRANSFER
 *
 *
 * mint函数允许公开按blockHeight递增发行token，输入为1个MINT，输出为1个MINT，1个TRANSFER
@@ -42,6 +42,10 @@ contract Payload {
   Ripemd160 ownerPkh;
   int amount;
 
+  /* 溯源需匹配genesisTx input的outpoint 和output的index */
+  bytes genesisOutpoint;
+  bytes genesisOutputIdx;
+
   static int mintLen = 88;
   static bytes MINT = b'00';
   static bytes mintPrefix = b'4c58';
@@ -59,17 +63,25 @@ contract Payload {
       /* part */
       this.dataStart = scriptLen - Payload.mintLen;
       this.codePart = scriptCode[ : this.dataStart - 2];
-      bytes dataPart = scriptCode[this.dataStart : ];
+      /* genesis */
+      int codeLen = len(this.codePart);
+      this.genesisOutpoint = this.codePart[codeLen - 40 : codeLen - 4];
+      this.genesisOutputIdx = this.codePart[codeLen - 4 : ];
       /* data: */
+      bytes dataPart = scriptCode[this.dataStart : ];
       this.ownerPkh = Ripemd160(dataPart[ : 20]);
       this.amount = unpack(dataPart[20 : 20 + 8]);
     } else {
       /* part */
       this.dataStart = scriptLen - Payload.transferLen;
       this.codePart = scriptCode[ : this.dataStart - 1];
-      bytes dataPart = scriptCode[this.dataStart : ];
+      /* genesis */
+      int codeLen = len(this.codePart);
+      this.genesisOutpoint = this.codePart[codeLen - 40 : codeLen - 4];
+      this.genesisOutputIdx = this.codePart[codeLen - 4 : ];
       /* data: */
-      this.blockHeader = dataPart[: 80];
+      bytes dataPart = scriptCode[this.dataStart : ];
+      this.blockHeader = dataPart[ : 80];
       this.blockHeight = unpack(dataPart[80 : 80 + 8]);
     }
   }
@@ -91,8 +103,6 @@ contract Payload {
 
 contract Bitcoin {
   int rabinPubKey;
-  bytes genesisOutpoint;
-  bytes genesisOutputIdx;
 
   /* mint */
   public function mint(SigHashPreimage txPreimage,
@@ -116,7 +126,7 @@ contract Bitcoin {
 
     // 溯源
     SatoTx st = new SatoTx(this.rabinPubKey, txPreimage, preTxOutpointSig, preTxOutpointMsg, preTxOutpointPadding, 0, b'', b'');
-    require(st.verifyGenesis(pl.codePart, this.genesisOutpoint, this.genesisOutputIdx));
+    require(st.verifyGenesis(pl.codePart, pl.genesisOutpoint, pl.genesisOutputIdx));
 
     // 计算token subsidy
     int halvings = pl.blockHeight / 210000;

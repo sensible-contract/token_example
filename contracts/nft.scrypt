@@ -9,11 +9,11 @@ import "satotx.scrypt";
 *
 * issue:
 *
-*   codePart, issuerPkh, tokenId, ISSUE
+*   codePart, GenesisPart, issuerPkh, tokenId, ISSUE
 *
 * transfer:
 *
-*   codePart, ownerPkh, tokenId, TRANSFER
+*   codePart, GenesisPart, ownerPkh, tokenId, TRANSFER
 *
 *
 * issue 函数允许发行人按tokenId从0递增发行nft，输出为一个ISSUE，一个TRANSFER
@@ -31,6 +31,10 @@ contract Payload {
   int tokenId;
   bytes dataType;
 
+  /* 溯源需匹配genesisTx input的outpoint 和output的index */
+  bytes genesisOutpoint;
+  bytes genesisOutputIdx;
+
   static int dataLen = 29;
   static int prefixLen = 1;
   static bytes dataPrefix = b'1d';
@@ -44,8 +48,12 @@ contract Payload {
     /* part */
     this.dataStart = len(scriptCode) - Payload.dataLen;
     this.codePart = scriptCode[ : this.dataStart - Payload.prefixLen];
-    bytes dataPart = scriptCode[this.dataStart : ];
+    /* genesis */
+    int codeLen = len(this.codePart);
+    this.genesisOutpoint = this.codePart[codeLen - 40 : codeLen - 4];
+    this.genesisOutputIdx = this.codePart[codeLen - 4 : ];
     /* data: */
+    bytes dataPart = scriptCode[this.dataStart : ];
     this.ownerPkh = Ripemd160(dataPart[ : 20]);
     this.tokenId = unpack(dataPart[20 : 20 + 8]);
   }
@@ -62,10 +70,6 @@ contract Payload {
 
 contract NFT {
   int rabinPubKey;
-
-  /* 溯源需匹配genesisTx input的outpoint 和output的index */
-  bytes genesisOutpoint;
-  bytes genesisOutputIdx;
 
   /* issue */
   public function issue(SigHashPreimage txPreimage,
@@ -86,7 +90,7 @@ contract NFT {
     require(pl.dataType == Payload.ISSUE);
 
     SatoTx st = new SatoTx(this.rabinPubKey, txPreimage, preTxOutpointSig, preTxOutpointMsg, preTxOutpointPadding, 0, b'', b'');
-    require(st.verifyGenesis(pl.codePart, this.genesisOutpoint, this.genesisOutputIdx));
+    require(st.verifyGenesis(pl.codePart, pl.genesisOutpoint, pl.genesisOutputIdx));
 
     // authorize
     require(hash160(issuer) == pl.ownerPkh);
