@@ -13,8 +13,11 @@ contract SatoTx {
 
   static bytes disableUtxoInGenesisTx = b'64697361626c654f687465725574786f4d6f76696e6746726f6d47656e65736973547821';
 
-  /* 溯源 */
-  public function verifyGenesis(bytes scriptCodePart, bytes genesisOutpoint, bytes genesisOutputIdx) {
+  /* 溯源
+   * 查看生成当前花费的utxo 的Tx内，是否有和当前脚本一致的锁定脚本。
+   * 或者有Genesis Utxo
+   */
+  public function verifyGenesis(bytes codeWithGenesisPart, bytes genesisOutpoint, bytes genesisOutputIdx) {
     /* 76 = 32 + 32 + 4 + 8 */
     int scriptOffset = 76;
 
@@ -39,10 +42,10 @@ contract SatoTx {
       // output输出index必须匹配 genesisOutputIdx
       require(thisOutpoint[32 : 36] == genesisOutputIdx);
     } else {
-      //必须包含scriptCodePart
-      int scriptCodeLen = len(scriptCodePart);
+      //必须包含codeWithGenesisPart
+      int scriptCodeLen = len(codeWithGenesisPart);
       require(len(this.preTxOutpointMsg) > scriptOffset + scriptCodeLen);
-      if (this.preTxOutpointMsg[scriptOffset : scriptOffset + scriptCodeLen] == scriptCodePart) {
+      if (this.preTxOutpointMsg[scriptOffset : scriptOffset + scriptCodeLen] == codeWithGenesisPart) {
         matchGenesis = true;
       }
     }
@@ -50,8 +53,11 @@ contract SatoTx {
     require(matchGenesis == true);
   }
 
-  /* 并排 */
-  public function verifySide(bytes scriptCodePart, bytes prevouts) {
+  /* 查看当前Tx其他某输入的锁定脚本（参数：codePart），是否和正在执行的锁定脚本一致
+   * 1. 输入参数必须为当前Tx的非正在执行的utxo
+   * 2. 锁定脚本必须一致
+   */
+  public function verifySide(bytes codePart, bytes prevouts) {
     /* 44 = 32 + 4 + 8 */
     int scriptOffset = 44;
 
@@ -84,14 +90,13 @@ contract SatoTx {
         if (outpoint == thisOutpoint) {
           currentI = i;
           /* 记录当前loop i */
-
         }
         else if (outpoint == this.sideTxUtxoMsg[ : 36]) {
           sideI = i;
           // 必须是同类合约
-          int scriptCodeLen = len(scriptCodePart);
+          int scriptCodeLen = len(codePart);
           require(len(this.sideTxUtxoMsg) > scriptOffset + scriptCodeLen);
-          if (this.sideTxUtxoMsg[scriptOffset : scriptOffset + scriptCodeLen] == scriptCodePart) {
+          if (this.sideTxUtxoMsg[scriptOffset : scriptOffset + scriptCodeLen] == codePart) {
             matchSide = true;
           }
         }
@@ -101,5 +106,4 @@ contract SatoTx {
     // Side检查
     require(matchSide == true);
   }
-
 }

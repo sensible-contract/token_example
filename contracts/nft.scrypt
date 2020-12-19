@@ -26,14 +26,15 @@ import "satotx.scrypt";
 contract Payload {
   int dataStart;
   bytes codePart;
-
-  Ripemd160 ownerPkh;
-  int tokenId;
+  bytes codeWithGenesisPart;
   bytes dataType;
 
   /* 溯源需匹配genesisTx input的outpoint 和output的index */
   bytes genesisOutpoint;
   bytes genesisOutputIdx;
+
+  Ripemd160 ownerPkh;
+  int tokenId;
 
   static int dataLen = 29;
   static int prefixLen = 1;
@@ -42,16 +43,19 @@ contract Payload {
   static bytes ISSUE = b'00';
   static bytes TRANSFER = b'01';
 
+  static int genesisLen = 40;
+
   constructor(bytes scriptCode) {
     int scriptLen = len(scriptCode);
     this.dataType = scriptCode[scriptLen - 1 : ];
     /* part */
     this.dataStart = len(scriptCode) - Payload.dataLen;
-    this.codePart = scriptCode[ : this.dataStart - Payload.prefixLen];
+    this.codeWithGenesisPart = scriptCode[ : this.dataStart - Payload.prefixLen];
+    int codeWithGenesisLen = len(this.codeWithGenesisPart);
+    this.codePart = this.codeWithGenesisPart[ : codeWithGenesisLen - Payload.genesisLen];
     /* genesis */
-    int codeLen = len(this.codePart);
-    this.genesisOutpoint = this.codePart[codeLen - 40 : codeLen - 4];
-    this.genesisOutputIdx = this.codePart[codeLen - 4 : ];
+    this.genesisOutpoint = this.codeWithGenesisPart[codeWithGenesisLen - Payload.genesisLen : codeWithGenesisLen - 4];
+    this.genesisOutputIdx = this.codeWithGenesisPart[codeWithGenesisLen - 4 : ];
     /* data: */
     bytes dataPart = scriptCode[this.dataStart : ];
     this.ownerPkh = Ripemd160(dataPart[ : 20]);
@@ -64,7 +68,7 @@ contract Payload {
     num2bin(this.tokenId, Util.OutputValueLen) +
     this.dataType;
 
-    return this.codePart + payload;
+    return this.codeWithGenesisPart + payload;
   }
 }
 
@@ -90,7 +94,7 @@ contract NFT {
     require(pl.dataType == Payload.ISSUE);
 
     SatoTx st = new SatoTx(this.rabinPubKey, txPreimage, preTxOutpointSig, preTxOutpointMsg, preTxOutpointPadding, 0, b'', b'');
-    require(st.verifyGenesis(pl.codePart, pl.genesisOutpoint, pl.genesisOutputIdx));
+    require(st.verifyGenesis(pl.codeWithGenesisPart, pl.genesisOutpoint, pl.genesisOutputIdx));
 
     // authorize
     require(hash160(issuer) == pl.ownerPkh);
@@ -136,7 +140,7 @@ contract NFT {
 
     // 溯源
     SatoTx st = new SatoTx(this.rabinPubKey, txPreimage, preTxOutpointSig, preTxOutpointMsg, preTxOutpointPadding, 0, b'', b'');
-    require(st.verifyGenesis(pl.codePart, SatoTx.disableUtxoInGenesisTx, b''));
+    require(st.verifyGenesis(pl.codeWithGenesisPart, SatoTx.disableUtxoInGenesisTx, b''));
 
     // authorize
     require(hash160(sender) == pl.ownerPkh);

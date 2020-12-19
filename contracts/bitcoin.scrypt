@@ -5,16 +5,50 @@ import "satotx.scrypt";
 /**
 * A token protocol based on UTXO model
 *
-* locking script:
 *
 * mint:
-*
-*   codePart, GenesisPart, blockHeader, blockHeight, MINT
+*   codePart, GenesisPart, blockHeader0, blockHeight, MINT
+*    ->
+*   codePart, GenesisPart, blockHeader1, blockHeight+1, MINT
+*   codePart, GenesisPart, ownerPkh, tokenAmount, TRANSFER
 *
 * split:
-* merge:
-*
 *   codePart, GenesisPart, ownerPkh, tokenAmount, TRANSFER
+*    ->
+*   codePart, GenesisPart, ownerPkhA, tokenAmount0, TRANSFER
+*   codePart, GenesisPart, ownerPkhB, tokenAmount1, TRANSFER
+*
+* merge:
+*   codePart, GenesisPart, ownerPkhA, tokenAmount0, TRANSFER
+*   codePart, GenesisPart, ownerPkhB, tokenAmount1, TRANSFER
+*    ->
+*   codePart, GenesisPart, ownerPkh, tokenAmount, TRANSFER
+*
+*
+* makeSwap:
+*   codePart, GenesisPartA, ownerPkhA, tokenAmountA, TRANSFER
+*    ->
+*   codePart, GenesisPartA, ownerPkhA, tokenAmountA, GenesisPartB, tokenAmountB, SWAP
+*
+* takeSwap（能否部分成交？）:
+*   codePart, GenesisPartA, ownerPkhA, tokenAmountA, GenesisPartB, tokenAmountB, SWAP
+*   codePart, GenesisPartB, ownerPkhB, tokenAmountB, TRANSFER
+*    ->
+*   codePart, GenesisPartA, ownerPkhB, tokenAmountA, TRANSFER
+*   codePart, GenesisPartB, ownerPkhA, tokenAmountB, TRANSFER
+*
+*
+* sell:
+*   codePart, GenesisPart, ownerPkhA, tokenAmount, TRANSFER
+*    ->
+*   codePart, GenesisPart, ownerPkhA, tokenAmount, satoshiAmount, SELL
+*
+* buy（能否部分成交？）:
+*   codePart, GenesisPart, ownerPkhA, tokenAmount, satoshiAmount, SELL
+*   ownerPkhB, satoshiAmount
+*    ->
+*   codePart, GenesisPart, ownerPkhB, tokenAmount, TRANSFER
+*   ownerPkhA, satoshiAmount
 *
 *
 * mint函数允许公开按blockHeight递增发行token，输入为1个MINT，输出为1个MINT，1个TRANSFER
@@ -32,7 +66,12 @@ contract Payload {
   /* base */
   int dataStart;
   bytes codePart;
+  bytes codeWithGenesisPart;
   bytes dataType;
+
+  /* 溯源需匹配genesisTx input的outpoint 和output的index */
+  bytes genesisOutpoint;
+  bytes genesisOutputIdx;
 
   /* mint */
   bytes blockHeader;
@@ -42,17 +81,31 @@ contract Payload {
   Ripemd160 ownerPkh;
   int amount;
 
-  /* 溯源需匹配genesisTx input的outpoint 和output的index */
-  bytes genesisOutpoint;
-  bytes genesisOutputIdx;
+  /* swap */
+  bytes genesisOutpointSwap;
+  bytes genesisOutputIdxSwap;
+  int amountSwap;
 
-  static int mintLen = 88;
+  /* sell */
+  int satoshiAmountSell;
+
+
   static bytes MINT = b'00';
-  static bytes mintPrefix = b'4c58';
-
-  static int transferLen = 29;
   static bytes TRANSFER = b'01';
+  static bytes SWAP = b'02';
+  static bytes SELL = b'03';
+
+  static bytes mintPrefix = b'4c59';
   static bytes transferPrefix = b'1d';
+  static bytes swapPrefix = b'4c4d';
+  static bytes sellPrefix = b'25';
+
+  static int mintLen = 89;
+  static int transferLen = 29;
+  static int swapLen = 77;
+  static int sellLen = 37;
+
+  static int genesisLen = 40;
 
   constructor(bytes scriptCode) {
     int scriptLen = len(scriptCode);
@@ -62,27 +115,67 @@ contract Payload {
     if (this.dataType == Payload.MINT) {
       /* part */
       this.dataStart = scriptLen - Payload.mintLen;
-      this.codePart = scriptCode[ : this.dataStart - 2];
+      this.codeWithGenesisPart = scriptCode[ : this.dataStart - len(Payload.mintPrefix) ];
+      int codeWithGenesisLen = len(this.codeWithGenesisPart);
+      this.codePart = this.codeWithGenesisPart[ : codeWithGenesisLen - Payload.genesisLen];
       /* genesis */
-      int codeLen = len(this.codePart);
-      this.genesisOutpoint = this.codePart[codeLen - 40 : codeLen - 4];
-      this.genesisOutputIdx = this.codePart[codeLen - 4 : ];
-      /* data: */
-      bytes dataPart = scriptCode[this.dataStart : ];
-      this.ownerPkh = Ripemd160(dataPart[ : 20]);
-      this.amount = unpack(dataPart[20 : 20 + 8]);
-    } else {
-      /* part */
-      this.dataStart = scriptLen - Payload.transferLen;
-      this.codePart = scriptCode[ : this.dataStart - 1];
-      /* genesis */
-      int codeLen = len(this.codePart);
-      this.genesisOutpoint = this.codePart[codeLen - 40 : codeLen - 4];
-      this.genesisOutputIdx = this.codePart[codeLen - 4 : ];
+      this.genesisOutpoint = this.codeWithGenesisPart[codeWithGenesisLen - Payload.genesisLen : codeWithGenesisLen - 4];
+      this.genesisOutputIdx = this.codeWithGenesisPart[codeWithGenesisLen - 4 : ];
       /* data: */
       bytes dataPart = scriptCode[this.dataStart : ];
       this.blockHeader = dataPart[ : 80];
       this.blockHeight = unpack(dataPart[80 : 80 + 8]);
+
+    }
+    else if (this.dataType == Payload.TRANSFER) {
+      /* part */
+      this.dataStart = scriptLen - Payload.transferLen;
+      this.codeWithGenesisPart = scriptCode[ : this.dataStart - len(Payload.transferPrefix) ];
+      int codeWithGenesisLen = len(this.codeWithGenesisPart);
+      this.codePart = this.codeWithGenesisPart[ : codeWithGenesisLen - Payload.genesisLen];
+      /* genesis */
+      this.genesisOutpoint = this.codeWithGenesisPart[codeWithGenesisLen - Payload.genesisLen : codeWithGenesisLen - 4];
+      this.genesisOutputIdx = this.codeWithGenesisPart[codeWithGenesisLen - 4 : ];
+      /* data: */
+      bytes dataPart = scriptCode[this.dataStart : ];
+      this.ownerPkh = Ripemd160(dataPart[ : 20]);
+      this.amount = unpack(dataPart[20 : 20 + 8]);
+
+    }
+    else if (this.dataType == Payload.SWAP) {
+      /* part */
+      this.dataStart = scriptLen - Payload.swapLen;
+      this.codeWithGenesisPart = scriptCode[ : this.dataStart - len(Payload.swapPrefix) ];
+      int codeWithGenesisLen = len(this.codeWithGenesisPart);
+      this.codePart = this.codeWithGenesisPart[ : codeWithGenesisLen - Payload.genesisLen];
+      /* genesis */
+      this.genesisOutpoint = this.codeWithGenesisPart[codeWithGenesisLen - Payload.genesisLen : codeWithGenesisLen - 4];
+      this.genesisOutputIdx = this.codeWithGenesisPart[codeWithGenesisLen - 4 : ];
+      /* data: */
+      bytes dataPart = scriptCode[this.dataStart : ];
+      this.ownerPkh = Ripemd160(dataPart[ : 20]);
+      this.amount = unpack(dataPart[20 : 20 + 8]);
+
+      this.genesisOutpointSwap = dataPart[28 : 28 + 36];
+      this.genesisOutputIdxSwap = dataPart[64 : 64 + 4];
+      this.amountSwap = unpack(dataPart[68 : 68 + 8]);
+
+    }
+    else if (this.dataType == Payload.SELL) {
+      /* part */
+      this.dataStart = scriptLen - Payload.sellLen;
+      this.codeWithGenesisPart = scriptCode[ : this.dataStart - len(Payload.sellPrefix) ];
+      int codeWithGenesisLen = len(this.codeWithGenesisPart);
+      this.codePart = this.codeWithGenesisPart[ : codeWithGenesisLen - Payload.genesisLen];
+      /* genesis */
+      this.genesisOutpoint = this.codeWithGenesisPart[codeWithGenesisLen - Payload.genesisLen : codeWithGenesisLen - 4];
+      this.genesisOutputIdx = this.codeWithGenesisPart[codeWithGenesisLen - 4 : ];
+      /* data: */
+      bytes dataPart = scriptCode[this.dataStart : ];
+      this.ownerPkh = Ripemd160(dataPart[ : 20]);
+      this.amount = unpack(dataPart[20 : 20 + 8]);
+
+      this.satoshiAmountSell = unpack(dataPart[28 : 28 + 8]);
     }
   }
 
@@ -92,19 +185,32 @@ contract Payload {
       payload = Payload.mintPrefix +
       this.blockHeader + num2bin(this.blockHeight, Util.OutputValueLen) +
       this.dataType;
-    } else {
+    }
+    else if (this.dataType == Payload.TRANSFER) {
       payload = Payload.transferPrefix +
       this.ownerPkh + num2bin(this.amount, Util.OutputValueLen) +
       this.dataType;
     }
-    return this.codePart + payload;
+    else if (this.dataType == Payload.SWAP) {
+      payload = Payload.swapPrefix +
+      this.ownerPkh + num2bin(this.amount, Util.OutputValueLen) +
+      this.genesisOutpointSwap + this.genesisOutputIdxSwap + num2bin(this.amountSwap, Util.OutputValueLen) +
+      this.dataType;
+    }
+    else if (this.dataType == Payload.SELL) {
+      payload = Payload.sellPrefix +
+      this.ownerPkh + num2bin(this.amount, Util.OutputValueLen) +
+      num2bin(this.satoshiAmountSell, Util.OutputValueLen) +
+      this.dataType;
+    }
+    return this.codeWithGenesisPart + payload;
   }
 }
 
 contract Bitcoin {
   int rabinPubKey;
 
-  /* mint */
+  //////////////// mint
   public function mint(SigHashPreimage txPreimage,
     int preTxOutpointSig, bytes preTxOutpointMsg, bytes preTxOutpointPadding,
     bytes blockHeader,
@@ -126,7 +232,7 @@ contract Bitcoin {
 
     // 溯源
     SatoTx st = new SatoTx(this.rabinPubKey, txPreimage, preTxOutpointSig, preTxOutpointMsg, preTxOutpointPadding, 0, b'', b'');
-    require(st.verifyGenesis(pl.codePart, pl.genesisOutpoint, pl.genesisOutputIdx));
+    require(st.verifyGenesis(pl.codeWithGenesisPart, pl.genesisOutpoint, pl.genesisOutputIdx));
 
     // 计算token subsidy
     int halvings = pl.blockHeight / 210000;
@@ -153,7 +259,7 @@ contract Bitcoin {
     require(hashOutputs == Util.hashOutputs(txPreimage));
   }
 
-  /* split */
+  //////////////// split
   public function split(SigHashPreimage txPreimage,
     int preTxOutpointSig, bytes preTxOutpointMsg, bytes preTxOutpointPadding,
 
@@ -175,6 +281,7 @@ contract Bitcoin {
 
     // dataType must be transfer
     require(pl.dataType == Payload.TRANSFER);
+
     // authorize
     require(hash160(sender) == pl.ownerPkh);
     require(checkSig(senderSig, sender));
@@ -182,7 +289,7 @@ contract Bitcoin {
 
     // 溯源
     SatoTx st = new SatoTx(this.rabinPubKey, txPreimage, preTxOutpointSig, preTxOutpointMsg, preTxOutpointPadding, 0, b'', b'');
-    require(st.verifyGenesis(pl.codePart, SatoTx.disableUtxoInGenesisTx, b''));
+    require(st.verifyGenesis(pl.codeWithGenesisPart, SatoTx.disableUtxoInGenesisTx, b''));
 
     // 业务操作
     pl.ownerPkh = receiver0Pkh;
@@ -202,7 +309,7 @@ contract Bitcoin {
     require(hashOutputs == Util.hashOutputs(txPreimage));
   }
 
-  /* merge */
+  //////////////// merge
   public function merge(SigHashPreimage txPreimage,
     int preTxOutpointSig, bytes preTxOutpointMsg, bytes preTxOutpointPadding,
     int sideTxUtxoSig, bytes sideTxUtxoMsg, bytes sideTxUtxoPadding,
@@ -228,14 +335,13 @@ contract Bitcoin {
     // source
     SatoTx st = new SatoTx(this.rabinPubKey, txPreimage, preTxOutpointSig, preTxOutpointMsg, preTxOutpointPadding,
       sideTxUtxoSig, sideTxUtxoMsg, sideTxUtxoPadding);
-    require(st.verifyGenesis(pl.codePart, SatoTx.disableUtxoInGenesisTx, b''));
-    // side check
-    require(st.verifySide(pl.codePart, prevouts));
+    require(st.verifyGenesis(pl.codeWithGenesisPart, SatoTx.disableUtxoInGenesisTx, b''));
+    require(st.verifySide(pl.codeWithGenesisPart, prevouts));
 
-    Payload plOther = new Payload(sideTxUtxoMsg[44 : ]);
     /* other scriptCode */
-    // dataType must be transfer
+    Payload plOther = new Payload(sideTxUtxoMsg[44 : ]);
     require(plOther.dataType == Payload.TRANSFER);
+    require(plOther.codeWithGenesisPart == pl.codeWithGenesisPart);
 
     // merge
     pl.ownerPkh = receiverPkh;
@@ -250,7 +356,327 @@ contract Bitcoin {
     require(hashOutputs == Util.hashOutputs(txPreimage));
   }
 
-  // burn a token back to normal bitcoins
+  //////////////// A make swap
+  public function makeSwap(SigHashPreimage txPreimage,
+    int preTxOutpointSig, bytes preTxOutpointMsg, bytes preTxOutpointPadding,
+    Sig ownerSig, PubKey owner,
+    bytes genesisOutpointSwap, bytes genesisOutputIdxSwap,
+    int tokenAmountSwap,
+    Ripemd160 changePkh, int satoshiAmount) {
+
+    require(tokenAmountSwap > 0);
+
+    SigHashType sigHashType = SigHash.ANYONECANPAY | SigHash.ALL | SigHash.FORKID;
+    // this ensures the preimage is for the current tx
+    require(Util.checkPreimageSigHashType(txPreimage, sigHashType));
+
+    // read previous locking script
+    bytes lockingScript = Util.scriptCode(txPreimage);
+    Payload pl = new Payload(lockingScript);
+
+    // dataType must be transfer
+    require(pl.dataType == Payload.TRANSFER);
+
+    // authorize
+    require(hash160(owner) == pl.ownerPkh);
+    require(checkSig(ownerSig, owner));
+
+    // 溯源
+    SatoTx st = new SatoTx(this.rabinPubKey, txPreimage, preTxOutpointSig, preTxOutpointMsg, preTxOutpointPadding, 0, b'', b'');
+    require(st.verifyGenesis(pl.codeWithGenesisPart, SatoTx.disableUtxoInGenesisTx, b''));
+
+    int satoshiBefore = Util.value(txPreimage);
+
+    // 业务操作
+    pl.genesisOutpointSwap = genesisOutpointSwap;
+    pl.genesisOutputIdxSwap = genesisOutputIdxSwap;
+    pl.amountSwap = tokenAmountSwap;
+    pl.dataType = Payload.SWAP;
+    bytes outputScript0 = pl.dump();
+    bytes output0 = Util.buildOutput(outputScript0, satoshiBefore);
+
+    bytes outputScript1 = Util.buildPublicKeyHashScript(changePkh);
+    bytes output1 = Util.buildOutput(outputScript1, satoshiAmount);
+
+    Sha256 hashOutputs = hash256(output0 + output1);
+    require(hashOutputs == Util.hashOutputs(txPreimage));
+  }
+
+//////////////// A cancel swap
+  public function cancelSwap(SigHashPreimage txPreimage,
+    int preTxOutpointSig, bytes preTxOutpointMsg, bytes preTxOutpointPadding,
+    Sig ownerSig, PubKey owner,
+    Ripemd160 changePkh, int satoshiAmount) {
+
+    SigHashType sigHashType = SigHash.ANYONECANPAY | SigHash.ALL | SigHash.FORKID;
+    // this ensures the preimage is for the current tx
+    require(Util.checkPreimageSigHashType(txPreimage, sigHashType));
+
+    // read previous locking script
+    bytes lockingScript = Util.scriptCode(txPreimage);
+    Payload pl = new Payload(lockingScript);
+
+    // dataType must be swap
+    require(pl.dataType == Payload.SWAP);
+
+    // authorize
+    require(hash160(owner) == pl.ownerPkh);
+    require(checkSig(ownerSig, owner));
+
+    // 溯源
+    SatoTx st = new SatoTx(this.rabinPubKey, txPreimage, preTxOutpointSig, preTxOutpointMsg, preTxOutpointPadding, 0, b'', b'');
+    require(st.verifyGenesis(pl.codeWithGenesisPart, SatoTx.disableUtxoInGenesisTx, b''));
+
+    int satoshiBefore = Util.value(txPreimage);
+
+    // 业务操作
+    pl.dataType = Payload.TRANSFER;
+    bytes outputScript0 = pl.dump();
+    bytes output0 = Util.buildOutput(outputScript0, satoshiBefore);
+
+    bytes outputScript1 = Util.buildPublicKeyHashScript(changePkh);
+    bytes output1 = Util.buildOutput(outputScript1, satoshiAmount);
+
+    Sha256 hashOutputs = hash256(output0 + output1);
+    require(hashOutputs == Util.hashOutputs(txPreimage));
+  }
+
+  //////////////// A finish swap
+  public function finishSwap(SigHashPreimage txPreimage,
+    int preTxOutpointSig, bytes preTxOutpointMsg, bytes preTxOutpointPadding,
+    int sideTxUtxoSig, bytes sideTxUtxoMsg, bytes sideTxUtxoPadding,
+
+    bytes prevouts,
+    Ripemd160 changePkh, int satoshiAmount) {
+
+    // this ensures the preimage is for the current tx
+    require(Tx.checkPreimage(txPreimage));
+
+    // read previous locking script
+    bytes lockingScript = Util.scriptCode(txPreimage);
+    Payload plA = new Payload(lockingScript);
+
+    // dataType must be swap
+    require(plA.dataType == Payload.SWAP);
+
+    // source
+    SatoTx st = new SatoTx(this.rabinPubKey, txPreimage, preTxOutpointSig, preTxOutpointMsg, preTxOutpointPadding,
+      sideTxUtxoSig, sideTxUtxoMsg, sideTxUtxoPadding);
+    require(st.verifyGenesis(plA.codeWithGenesisPart, SatoTx.disableUtxoInGenesisTx, b''));
+    require(st.verifySide(plA.codePart, prevouts));
+
+    /* other scriptCode */
+    Payload plB = new Payload(sideTxUtxoMsg[44 : ]);
+    require(plB.dataType == Payload.TRANSFER);
+    require(plB.codePart == plA.codePart);
+
+    /* must match genesis */
+    require(plB.genesisOutpoint == plA.genesisOutpointSwap);
+    require(plB.genesisOutputIdx == plA.genesisOutputIdxSwap);
+    require(plB.amount >= plA.amountSwap);
+
+    int satoshiAmountA = Util.value(txPreimage);
+    int satoshiAmountB = unpack(sideTxUtxoMsg[36 : 44]);
+
+    Ripemd160 ownerPkhA = plA.ownerPkh;
+    // swap
+    plA.ownerPkh = plB.ownerPkh;
+    plA.dataType = Payload.TRANSFER;
+    bytes outputScript0 = plA.dump();
+    bytes output0 = Util.buildOutput(outputScript0, satoshiAmountB);
+
+    plB.ownerPkh = ownerPkhA;
+    bytes outputScript1 = plB.dump();
+    bytes output1 = Util.buildOutput(outputScript1, satoshiAmountA);
+
+    bytes outputScript2 = Util.buildPublicKeyHashScript(changePkh);
+    bytes output2 = Util.buildOutput(outputScript2, satoshiAmount);
+
+    Sha256 hashOutputs = hash256(output0 + output1 + output2);
+    require(hashOutputs == Util.hashOutputs(txPreimage));
+  }
+
+  //////////////// B take swap
+  public function takeSwap(SigHashPreimage txPreimage,
+    int preTxOutpointSig, bytes preTxOutpointMsg, bytes preTxOutpointPadding,
+    int sideTxUtxoSig, bytes sideTxUtxoMsg, bytes sideTxUtxoPadding,
+
+    Sig ownerSig, PubKey owner,
+    bytes prevouts,
+    Ripemd160 changePkh, int satoshiAmount) {
+
+    // this ensures the preimage is for the current tx
+    require(Tx.checkPreimage(txPreimage));
+
+    // read previous locking script
+    bytes lockingScript = Util.scriptCode(txPreimage);
+    Payload plB = new Payload(lockingScript);
+
+    // dataType must be transfer
+    require(plB.dataType == Payload.TRANSFER);
+
+    // authorize
+    require(hash160(owner) == plB.ownerPkh);
+    require(checkSig(ownerSig, owner));
+
+    // source
+    SatoTx st = new SatoTx(this.rabinPubKey, txPreimage, preTxOutpointSig, preTxOutpointMsg, preTxOutpointPadding,
+      sideTxUtxoSig, sideTxUtxoMsg, sideTxUtxoPadding);
+    require(st.verifyGenesis(plB.codeWithGenesisPart, SatoTx.disableUtxoInGenesisTx, b''));
+    require(st.verifySide(plB.codePart, prevouts));
+
+    /* other scriptCode */
+    Payload plA = new Payload(sideTxUtxoMsg[44 : ]);
+    require(plA.dataType == Payload.SWAP);
+    require(plA.codePart == plB.codePart);
+
+    int satoshiAmountB = Util.value(txPreimage);
+    int satoshiAmountA = unpack(sideTxUtxoMsg[36 : 44]);
+
+    // take swap
+    Ripemd160 ownerPkhA = plA.ownerPkh;
+
+    plA.ownerPkh = plB.ownerPkh;
+    plA.dataType = Payload.TRANSFER;
+    bytes outputScript0 = plA.dump();
+    bytes output0 = Util.buildOutput(outputScript0, satoshiAmountB);
+
+    plB.ownerPkh = ownerPkhA;
+    bytes outputScript1 = plB.dump();
+    bytes output1 = Util.buildOutput(outputScript1, satoshiAmountA);
+
+    bytes outputScript2 = Util.buildPublicKeyHashScript(changePkh);
+    bytes output2 = Util.buildOutput(outputScript2, satoshiAmount);
+
+    Sha256 hashOutputs = hash256(output0 + output1 + output2);
+    require(hashOutputs == Util.hashOutputs(txPreimage));
+  }
+
+  //////////////// A sell
+  public function sell(SigHashPreimage txPreimage,
+    int preTxOutpointSig, bytes preTxOutpointMsg, bytes preTxOutpointPadding,
+    Sig ownerSig, PubKey owner,
+    int satoshAmountSell,
+    Ripemd160 changePkh, int satoshiAmount) {
+
+    require(satoshAmountSell > 0);
+
+    SigHashType sigHashType = SigHash.ANYONECANPAY | SigHash.ALL | SigHash.FORKID;
+    // this ensures the preimage is for the current tx
+    require(Util.checkPreimageSigHashType(txPreimage, sigHashType));
+
+    // read previous locking script
+    bytes lockingScript = Util.scriptCode(txPreimage);
+    Payload pl = new Payload(lockingScript);
+
+    // dataType must be transfer
+    require(pl.dataType == Payload.TRANSFER);
+
+    // authorize
+    require(hash160(owner) == pl.ownerPkh);
+    require(checkSig(ownerSig, owner));
+
+    // 溯源
+    SatoTx st = new SatoTx(this.rabinPubKey, txPreimage, preTxOutpointSig, preTxOutpointMsg, preTxOutpointPadding, 0, b'', b'');
+    require(st.verifyGenesis(pl.codeWithGenesisPart, SatoTx.disableUtxoInGenesisTx, b''));
+
+    int satoshiBefore = Util.value(txPreimage);
+
+    // 业务操作
+    pl.satoshiAmountSell = satoshAmountSell;
+    pl.dataType = Payload.SELL;
+    bytes outputScript0 = pl.dump();
+    bytes output0 = Util.buildOutput(outputScript0, satoshiBefore);
+
+    bytes outputScript1 = Util.buildPublicKeyHashScript(changePkh);
+    bytes output1 = Util.buildOutput(outputScript1, satoshiAmount);
+
+    Sha256 hashOutputs = hash256(output0 + output1);
+    require(hashOutputs == Util.hashOutputs(txPreimage));
+  }
+
+  //////////////// A cancel sell
+  public function cancelSell(SigHashPreimage txPreimage,
+    int preTxOutpointSig, bytes preTxOutpointMsg, bytes preTxOutpointPadding,
+    Sig ownerSig, PubKey owner,
+    Ripemd160 changePkh, int satoshiAmount) {
+
+    SigHashType sigHashType = SigHash.ANYONECANPAY | SigHash.ALL | SigHash.FORKID;
+    // this ensures the preimage is for the current tx
+    require(Util.checkPreimageSigHashType(txPreimage, sigHashType));
+
+    // read previous locking script
+    bytes lockingScript = Util.scriptCode(txPreimage);
+    Payload pl = new Payload(lockingScript);
+
+    // dataType must be sell
+    require(pl.dataType == Payload.SELL);
+
+    // authorize
+    require(hash160(owner) == pl.ownerPkh);
+    require(checkSig(ownerSig, owner));
+
+    // 溯源
+    SatoTx st = new SatoTx(this.rabinPubKey, txPreimage, preTxOutpointSig, preTxOutpointMsg, preTxOutpointPadding, 0, b'', b'');
+    require(st.verifyGenesis(pl.codeWithGenesisPart, SatoTx.disableUtxoInGenesisTx, b''));
+
+    int satoshiBefore = Util.value(txPreimage);
+
+    // 业务操作
+    pl.dataType = Payload.TRANSFER;
+    bytes outputScript0 = pl.dump();
+    bytes output0 = Util.buildOutput(outputScript0, satoshiBefore);
+
+    bytes outputScript1 = Util.buildPublicKeyHashScript(changePkh);
+    bytes output1 = Util.buildOutput(outputScript1, satoshiAmount);
+
+    Sha256 hashOutputs = hash256(output0 + output1);
+    require(hashOutputs == Util.hashOutputs(txPreimage));
+  }
+
+
+  //////////////// B buy
+  public function buy(SigHashPreimage txPreimage,
+    int preTxOutpointSig, bytes preTxOutpointMsg, bytes preTxOutpointPadding,
+    Ripemd160 buyerPkh, int satoshiAmount0,
+    Ripemd160 changePkh, int satoshiAmount1) {
+
+    SigHashType sigHashType = SigHash.ANYONECANPAY | SigHash.ALL | SigHash.FORKID;
+    // this ensures the preimage is for the current tx
+    require(Util.checkPreimageSigHashType(txPreimage, sigHashType));
+
+    // read previous locking script
+    bytes lockingScript = Util.scriptCode(txPreimage);
+    Payload pl = new Payload(lockingScript);
+
+    // dataType must be sell
+    require(pl.dataType == Payload.SELL);
+
+    // 溯源
+    SatoTx st = new SatoTx(this.rabinPubKey, txPreimage, preTxOutpointSig, preTxOutpointMsg, preTxOutpointPadding, 0, b'', b'');
+    require(st.verifyGenesis(pl.codeWithGenesisPart, SatoTx.disableUtxoInGenesisTx, b''));
+
+    int satoshiBefore = Util.value(txPreimage);
+
+    Ripemd160 sellerPkh = pl.ownerPkh;
+
+    // 业务操作
+    pl.ownerPkh = buyerPkh;
+    pl.dataType = Payload.TRANSFER;
+    bytes outputScript0 = pl.dump();
+    bytes output0 = Util.buildOutput(outputScript0, satoshiAmount0);
+
+    bytes outputScript1 = Util.buildPublicKeyHashScript(changePkh);
+    bytes output1 = Util.buildOutput(outputScript1, satoshiAmount1);
+
+    bytes outputScript2 = Util.buildPublicKeyHashScript(sellerPkh);
+    bytes output2 = Util.buildOutput(outputScript2, pl.satoshiAmountSell + satoshiBefore);
+
+    Sha256 hashOutputs = hash256(output0 + output1 + output2);
+    require(hashOutputs == Util.hashOutputs(txPreimage));
+  }
+
+  //////////////// burn a token back to normal bitcoins
   public function burn(SigHashPreimage txPreimage,
     Sig senderSig, PubKey sender,
     Ripemd160 receiverPkh, int satoshiAmount) {
