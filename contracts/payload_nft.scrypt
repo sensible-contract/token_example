@@ -35,7 +35,7 @@ contract PayloadNFT {
   static bytes SELL = b'03';
 
   static bytes dataPrefix = b'1d';
-  static bytes swapPrefix = b'4c45';
+  static bytes swapPrefix = b'45';
   static bytes sellPrefix = b'25';
 
   static int dataLen = 29;
