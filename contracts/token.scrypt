@@ -2,6 +2,7 @@ import "util.scrypt";
 import "rabin.scrypt";
 import "satotx.scrypt";
 import "payload_token.scrypt";
+import "payload_nft.scrypt";
 
 /**
 * A token protocol based on UTXO model
@@ -31,12 +32,27 @@ import "payload_token.scrypt";
 *    ->
 *   codePart, GenesisPartA, ownerPkhA, tokenAmountA, GenesisPartB, tokenAmountB, SWAP
 *
-* takeSwap（能否部分成交？）:
+* cancelSwap:
 *   codePart, GenesisPartA, ownerPkhA, tokenAmountA, GenesisPartB, tokenAmountB, SWAP
-*   codePart, GenesisPartB, ownerPkhB, tokenAmountB, TRANSFER
+*    ->
+*   codePart, GenesisPartA, ownerPkhA, tokenAmountA, TRANSFER
+*
+*
+* takeSwap/finishSwap（能否部分成交？）:
+*   (finishSwap) codePart, GenesisPartA, ownerPkhA, tokenAmountA, GenesisPartB, tokenAmountB, SWAP
+*   (takeSwap)   codePart, GenesisPartB, ownerPkhB, tokenAmountB, TRANSFER
 *    ->
 *   codePart, GenesisPartA, ownerPkhB, tokenAmountA, TRANSFER
 *   codePart, GenesisPartB, ownerPkhA, tokenAmountB, TRANSFER
+*
+*
+*（Token不检查NFT合约类型codePartNFT，允许和任意符合数据格式的NFT合约兑换）
+* takeSwapNFT:
+*   (NFT.finishSwapToken) codePartNFT, GenesisPartA, ownerPkhA, tokenId, hash256(codePartTkn + GenesisPartB), tokenAmountB, SWAP
+*   (Tkn.takeSwapNFT)     codePartTkn, GenesisPartB, ownerPkhB, tokenAmountB, TRANSFER
+*    ->
+*   codePartNFT, GenesisPartA, ownerPkhB, tokenId, TRANSFER
+*   codePartTkn, GenesisPartB, ownerPkhA, tokenAmountB, TRANSFER
 *
 *
 * sell:
@@ -386,6 +402,62 @@ contract Token {
     PayloadToken plA = new PayloadToken(sideTxUtxoMsg[44 : ]);
     require(plA.dataType == PayloadToken.SWAP);
     require(plA.codePart == plB.codePart);
+
+    int satoshiAmountB = Util.value(txPreimage);
+    int satoshiAmountA = unpack(sideTxUtxoMsg[36 : 44]);
+
+    // take swap
+    Ripemd160 ownerPkhA = plA.ownerPkh;
+
+    plA.ownerPkh = plB.ownerPkh;
+    plA.dataType = PayloadToken.TRANSFER;
+    bytes outputScript0 = plA.dump();
+    bytes output0 = Util.buildOutput(outputScript0, satoshiAmountB);
+
+    plB.ownerPkh = ownerPkhA;
+    bytes outputScript1 = plB.dump();
+    bytes output1 = Util.buildOutput(outputScript1, satoshiAmountA);
+
+    bytes outputScript2 = Util.buildPublicKeyHashScript(changePkh);
+    bytes output2 = Util.buildOutput(outputScript2, satoshiAmount);
+
+    Sha256 hashOutputs = hash256(output0 + output1 + output2);
+    require(hashOutputs == Util.hashOutputs(txPreimage));
+  }
+
+
+  //////////////// B take swap NFT
+  public function takeSwapNFT(SigHashPreimage txPreimage,
+    int preTxOutpointSig, bytes preTxOutpointMsg, bytes preTxOutpointPadding,
+    int sideTxUtxoSig, bytes sideTxUtxoMsg, bytes sideTxUtxoPadding,
+
+    Sig ownerSig, PubKey owner,
+    bytes prevouts,
+    Ripemd160 changePkh, int satoshiAmount) {
+
+    // this ensures the preimage is for the current tx
+    require(Tx.checkPreimage(txPreimage));
+
+    // read previous locking script
+    bytes lockingScript = Util.scriptCode(txPreimage);
+    PayloadToken plB = new PayloadToken(lockingScript);
+
+    // dataType must be transfer
+    require(plB.dataType == PayloadToken.TRANSFER);
+
+    // authorize
+    require(hash160(owner) == plB.ownerPkh);
+    require(checkSig(ownerSig, owner));
+
+    /* other scriptCode */
+    PayloadNFT plA = new PayloadNFT(sideTxUtxoMsg[44 : ]);
+    require(plA.dataType == PayloadNFT.SWAP);
+
+    // source
+    SatoTx st = new SatoTx(this.rabinPubKey, txPreimage, preTxOutpointSig, preTxOutpointMsg, preTxOutpointPadding,
+      sideTxUtxoSig, sideTxUtxoMsg, sideTxUtxoPadding);
+    require(st.verifyGenesis(plB.codeWithGenesisPart, SatoTx.disableUtxoInGenesisTx, b''));
+    require(st.verifySide(b'', prevouts)); /* check prevoutpoint but ignore codePartA */
 
     int satoshiAmountB = Util.value(txPreimage);
     int satoshiAmountA = unpack(sideTxUtxoMsg[36 : 44]);

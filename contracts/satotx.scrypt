@@ -93,11 +93,16 @@ contract SatoTx {
         }
         else if (outpoint == this.sideTxUtxoMsg[ : 36]) {
           sideI = i;
-          // 必须是同类合约
           int scriptCodeLen = len(codePart);
-          require(len(this.sideTxUtxoMsg) > scriptOffset + scriptCodeLen);
-          if (this.sideTxUtxoMsg[scriptOffset : scriptOffset + scriptCodeLen] == codePart) {
-            matchSide = true;
+          if (scriptCodeLen > 0) {
+              // 必须是同类合约
+              require(len(this.sideTxUtxoMsg) > scriptOffset + scriptCodeLen);
+              if (this.sideTxUtxoMsg[scriptOffset : scriptOffset + scriptCodeLen] == codePart) {
+                  matchSide = true;
+              }
+          } else {
+              // 忽视合约类型，只检查是否是当前utxo
+              matchSide = true;
           }
         }
         i = i + 1;

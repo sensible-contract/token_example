@@ -2,6 +2,7 @@ import "util.scrypt";
 import "rabin.scrypt";
 import "satotx.scrypt";
 import "payload_nft.scrypt";
+import "payload_token.scrypt";
 
 /*
 * A safty NFT protocol
@@ -19,17 +20,17 @@ import "payload_nft.scrypt";
 *   codePart, GenesisPart, ownerPkhB, tokenId, TRANSFER
 *
 *
-* makeSwap:
+* makeSwapToken:
 *   codePartA, GenesisPartA, ownerPkhA, tokenId, TRANSFER
 *    ->
 *   codePartA, GenesisPartA, ownerPkhA, tokenId, hash256(codePartB + GenesisPartB), tokenAmountB, SWAP
 *
-* takeSwap:
-*   codePartA, GenesisPartA, ownerPkhA, tokenId, hash256(codePartB + GenesisPartB), tokenAmountB, SWAP
-*   codePartB, GenesisPartB, ownerPkhB, tokenAmountB, TRANSFER
+* finishSwapToken:
+*   (finishSwapToken) codePartNFT, GenesisPartA, ownerPkhA, tokenId, hash256(codePartTkn + GenesisPartB), tokenAmountB, SWAP
+*   (takeSwapNFT)     codePartTkn, GenesisPartB, ownerPkhB, tokenAmountB, TRANSFER
 *    ->
-*   codePartA, GenesisPartA, ownerPkhB, tokenId, TRANSFER
-*   codePartB, GenesisPartB, ownerPkhA, tokenAmountB, TRANSFER
+*   codePartNFT, GenesisPartA, ownerPkhB, tokenId, TRANSFER
+*   codePartTkn, GenesisPartB, ownerPkhA, tokenAmountB, TRANSFER
 *
 *
 * sell:
@@ -137,6 +138,145 @@ contract NFT {
     Sha256 hashOutputs = hash256(output0 + output1);
     require(hashOutputs == Util.hashOutputs(txPreimage));
   }
+
+
+
+  //////////////// A make swap for token
+  public function makeSwapToken(SigHashPreimage txPreimage,
+    int preTxOutpointSig, bytes preTxOutpointMsg, bytes preTxOutpointPadding,
+    Sig ownerSig, PubKey owner,
+    Sha256 codeWithGenesisPartHashSwap,
+    int tokenAmountSwap,
+    Ripemd160 changePkh, int satoshiAmount) {
+
+    require(tokenAmountSwap > 0);
+
+    SigHashType sigHashType = SigHash.ANYONECANPAY | SigHash.ALL | SigHash.FORKID;
+    // this ensures the preimage is for the current tx
+    require(Util.checkPreimageSigHashType(txPreimage, sigHashType));
+
+    // read previous locking script
+    bytes lockingScript = Util.scriptCode(txPreimage);
+    PayloadNFT pl = new PayloadNFT(lockingScript);
+
+    // dataType must be transfer
+    require(pl.dataType == PayloadNFT.TRANSFER);
+
+    // authorize
+    require(hash160(owner) == pl.ownerPkh);
+    require(checkSig(ownerSig, owner));
+
+    // 溯源
+    SatoTx st = new SatoTx(this.rabinPubKey, txPreimage, preTxOutpointSig, preTxOutpointMsg, preTxOutpointPadding, 0, b'', b'');
+    require(st.verifyGenesis(pl.codeWithGenesisPart, SatoTx.disableUtxoInGenesisTx, b''));
+
+    int satoshiBefore = Util.value(txPreimage);
+
+    // 业务操作
+    pl.codeWithGenesisPartHashSwap = codeWithGenesisPartHashSwap;
+    pl.amountSwap = tokenAmountSwap;
+    pl.dataType = PayloadNFT.SWAP;
+    bytes outputScript0 = pl.dump();
+    bytes output0 = Util.buildOutput(outputScript0, satoshiBefore);
+
+    bytes outputScript1 = Util.buildPublicKeyHashScript(changePkh);
+    bytes output1 = Util.buildOutput(outputScript1, satoshiAmount);
+
+    Sha256 hashOutputs = hash256(output0 + output1);
+    require(hashOutputs == Util.hashOutputs(txPreimage));
+  }
+
+  //////////////// A cancel swap token
+  public function cancelSwapToken(SigHashPreimage txPreimage,
+    int preTxOutpointSig, bytes preTxOutpointMsg, bytes preTxOutpointPadding,
+    Sig ownerSig, PubKey owner,
+    Ripemd160 changePkh, int satoshiAmount) {
+
+    SigHashType sigHashType = SigHash.ANYONECANPAY | SigHash.ALL | SigHash.FORKID;
+    // this ensures the preimage is for the current tx
+    require(Util.checkPreimageSigHashType(txPreimage, sigHashType));
+
+    // read previous locking script
+    bytes lockingScript = Util.scriptCode(txPreimage);
+    PayloadNFT pl = new PayloadNFT(lockingScript);
+
+    // dataType must be swap
+    require(pl.dataType == PayloadNFT.SWAP);
+
+    // authorize
+    require(hash160(owner) == pl.ownerPkh);
+    require(checkSig(ownerSig, owner));
+
+    // 溯源
+    SatoTx st = new SatoTx(this.rabinPubKey, txPreimage, preTxOutpointSig, preTxOutpointMsg, preTxOutpointPadding, 0, b'', b'');
+    require(st.verifyGenesis(pl.codeWithGenesisPart, SatoTx.disableUtxoInGenesisTx, b''));
+
+    int satoshiBefore = Util.value(txPreimage);
+
+    // 业务操作
+    pl.dataType = PayloadNFT.TRANSFER;
+    bytes outputScript0 = pl.dump();
+    bytes output0 = Util.buildOutput(outputScript0, satoshiBefore);
+
+    bytes outputScript1 = Util.buildPublicKeyHashScript(changePkh);
+    bytes output1 = Util.buildOutput(outputScript1, satoshiAmount);
+
+    Sha256 hashOutputs = hash256(output0 + output1);
+    require(hashOutputs == Util.hashOutputs(txPreimage));
+  }
+
+  //////////////// A finish swap
+  public function finishSwapToken(SigHashPreimage txPreimage,
+    int preTxOutpointSig, bytes preTxOutpointMsg, bytes preTxOutpointPadding,
+    int sideTxUtxoSig, bytes sideTxUtxoMsg, bytes sideTxUtxoPadding,
+
+    bytes prevouts,
+    Ripemd160 changePkh, int satoshiAmount) {
+
+    // this ensures the preimage is for the current tx
+    require(Tx.checkPreimage(txPreimage));
+
+    // read previous locking script
+    bytes lockingScript = Util.scriptCode(txPreimage);
+    PayloadNFT plA = new PayloadNFT(lockingScript);
+
+    // dataType must be swap
+    require(plA.dataType == PayloadNFT.SWAP);
+
+    // source
+    SatoTx st = new SatoTx(this.rabinPubKey, txPreimage, preTxOutpointSig, preTxOutpointMsg, preTxOutpointPadding,
+      sideTxUtxoSig, sideTxUtxoMsg, sideTxUtxoPadding);
+    require(st.verifyGenesis(plA.codeWithGenesisPart, SatoTx.disableUtxoInGenesisTx, b''));
+    require(st.verifySide(b'', prevouts));
+
+    /* other scriptCode */
+    PayloadToken plB = new PayloadToken(sideTxUtxoMsg[44 : ]);
+    require(plB.dataType == PayloadToken.TRANSFER);
+    /* must match genesis */
+    require(sha256(plB.codeWithGenesisPart) == plA.codeWithGenesisPartHashSwap);
+    require(plB.amount >= plA.amountSwap);
+
+    int satoshiAmountA = Util.value(txPreimage);
+    int satoshiAmountB = unpack(sideTxUtxoMsg[36 : 44]);
+
+    Ripemd160 ownerPkhA = plA.ownerPkh;
+    // swap
+    plA.ownerPkh = plB.ownerPkh;
+    plA.dataType = PayloadNFT.TRANSFER;
+    bytes outputScript0 = plA.dump();
+    bytes output0 = Util.buildOutput(outputScript0, satoshiAmountB);
+
+    plB.ownerPkh = ownerPkhA;
+    bytes outputScript1 = plB.dump();
+    bytes output1 = Util.buildOutput(outputScript1, satoshiAmountA);
+
+    bytes outputScript2 = Util.buildPublicKeyHashScript(changePkh);
+    bytes output2 = Util.buildOutput(outputScript2, satoshiAmount);
+
+    Sha256 hashOutputs = hash256(output0 + output1 + output2);
+    require(hashOutputs == Util.hashOutputs(txPreimage));
+  }
+
 
   //////////////// A sell
   public function sell(SigHashPreimage txPreimage,

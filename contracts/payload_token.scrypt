@@ -91,22 +91,17 @@ contract PayloadToken {
       this.blockHeader = dataPart[ : 80];
       this.blockHeight = unpack(dataPart[80 : 80 + 8]);
     }
-    else if (this.dataType == PayloadToken.TRANSFER) {
+    else {
       this.ownerPkh = Ripemd160(dataPart[ : 20]);
       this.amount = unpack(dataPart[20 : 20 + 8]);
     }
-    else if (this.dataType == PayloadToken.SWAP) {
-      this.ownerPkh = Ripemd160(dataPart[ : 20]);
-      this.amount = unpack(dataPart[20 : 20 + 8]);
-      /* swap */
+
+    if (this.dataType == PayloadToken.SWAP) {
       this.genesisOutpointSwap = dataPart[28 : 28 + 36];
       this.genesisOutputIdxSwap = dataPart[64 : 64 + 4];
       this.amountSwap = unpack(dataPart[68 : 68 + 8]);
     }
     else if (this.dataType == PayloadToken.SELL) {
-      this.ownerPkh = Ripemd160(dataPart[ : 20]);
-      this.amount = unpack(dataPart[20 : 20 + 8]);
-
       this.satoshiAmountSell = unpack(dataPart[28 : 28 + 8]);
     }
   }
