@@ -1,0 +1,91 @@
+import "util.scrypt";
+
+/*
+* A safty NFT protocol
+*
+*   codePart, GenesisPart, issuerPkh, tokenId, ISSUE
+*   codePart, GenesisPart, ownerPkh, tokenId, TRANSFER
+*   codePartA, GenesisPartA, ownerPkhA, tokenId, hash256(codePartB + GenesisPartB), tokenAmountB, SWAP
+*   codePart, GenesisPart, ownerPkh, tokenId, satoshiAmount, SELL
+*/
+
+contract PayloadNFT {
+  int dataStart;
+  bytes codePart;
+  bytes codeWithGenesisPart;
+  bytes dataType;
+
+  /* 溯源需匹配genesisTx input的outpoint 和output的index */
+  bytes genesisOutpoint;
+  bytes genesisOutputIdx;
+
+  Ripemd160 ownerPkh;
+  int tokenId;
+  /* sell */
+  int satoshiAmountSell;
+
+  static int dataLen = 29;
+  static int prefixLen = 1;
+  static bytes dataPrefix = b'1d';
+
+  static bytes sellPrefix = b'25';
+  static int sellLen = 37;
+
+  static bytes ISSUE = b'00';
+  static bytes TRANSFER = b'01';
+  static bytes SELL = b'02';
+
+  static int genesisLen = 40;
+
+  constructor(bytes scriptCode) {
+    int scriptLen = len(scriptCode);
+    this.dataType = scriptCode[scriptLen - 1 : ];
+
+    int dataLen = 0;
+    int prefixLen = 0;
+    if (this.dataType == PayloadNFT.SELL) {
+      dataLen = PayloadNFT.sellLen;
+      prefixLen = len(PayloadNFT.sellPrefix);
+    } else {
+      /* all other data types */
+      dataLen = PayloadNFT.dataLen;
+      prefixLen = PayloadNFT.prefixLen;
+    }
+
+    /* part */
+    this.dataStart = len(scriptCode) - dataLen;
+    this.codeWithGenesisPart = scriptCode[ : this.dataStart - prefixLen];
+    int codeWithGenesisLen = len(this.codeWithGenesisPart);
+    this.codePart = this.codeWithGenesisPart[ : codeWithGenesisLen - PayloadNFT.genesisLen];
+    /* genesis */
+    this.genesisOutpoint = this.codeWithGenesisPart[codeWithGenesisLen - PayloadNFT.genesisLen : codeWithGenesisLen - 4];
+    this.genesisOutputIdx = this.codeWithGenesisPart[codeWithGenesisLen - 4 : ];
+    /* data */
+    bytes dataPart = scriptCode[this.dataStart : ];
+
+    /* all data types */
+    this.ownerPkh = Ripemd160(dataPart[ : 20]);
+    this.tokenId = unpack(dataPart[20 : 20 + 8]);
+
+    if (this.dataType == PayloadNFT.SELL) {
+      this.satoshiAmountSell = unpack(dataPart[28 : 28 + 8]);
+    }
+  }
+
+  function dump() : bytes {
+    bytes payload = b'';
+    if (this.dataType == PayloadNFT.SELL) {
+      payload = PayloadNFT.sellPrefix +
+      this.ownerPkh +
+      num2bin(this.tokenId, Util.OutputValueLen) +
+      num2bin(this.satoshiAmountSell, Util.OutputValueLen) +
+      this.dataType;
+    } else {
+      payload = PayloadNFT.dataPrefix +
+      this.ownerPkh +
+      num2bin(this.tokenId, Util.OutputValueLen) +
+      this.dataType;
+    }
+    return this.codeWithGenesisPart + payload;
+  }
+}

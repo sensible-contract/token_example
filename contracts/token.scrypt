@@ -1,6 +1,7 @@
 import "util.scrypt";
 import "rabin.scrypt";
 import "satotx.scrypt";
+import "payload_token.scrypt";
 
 /**
 * A token protocol based on UTXO model
@@ -62,137 +63,8 @@ import "satotx.scrypt";
 * burn 函数用于销毁用户的token，输入为1个TRANSFER，输出为1个找零
 */
 
-contract Payload {
-  /* base */
-  int dataStart;
-  bytes codePart;
-  bytes codeWithGenesisPart;
-  bytes dataType;
 
-  /* 溯源需匹配genesisTx input的outpoint 和output的index */
-  bytes genesisOutpoint;
-  bytes genesisOutputIdx;
-
-  /* mint */
-  bytes blockHeader;
-  int blockHeight;
-
-  /* transfer */
-  Ripemd160 ownerPkh;
-  int amount;
-
-  /* swap */
-  bytes genesisOutpointSwap;
-  bytes genesisOutputIdxSwap;
-  int amountSwap;
-
-  /* sell */
-  int satoshiAmountSell;
-
-  static bytes MINT = b'00';
-  static bytes TRANSFER = b'01';
-  static bytes SWAP = b'02';
-  static bytes SELL = b'03';
-
-  static bytes mintPrefix = b'4c59';
-  static bytes transferPrefix = b'1d';
-  static bytes swapPrefix = b'4c4d';
-  static bytes sellPrefix = b'25';
-
-  static int mintLen = 89;
-  static int transferLen = 29;
-  static int swapLen = 77;
-  static int sellLen = 37;
-
-  static int genesisLen = 40;
-
-  constructor(bytes scriptCode) {
-    int scriptLen = len(scriptCode);
-    this.dataType = scriptCode[scriptLen - 1 : ];
-
-    int dataLen = 0;
-    int prefixLen = 0;
-    if (this.dataType == Payload.MINT) {
-      dataLen = Payload.mintLen;
-      prefixLen = len(Payload.mintPrefix);
-    }
-    else if (this.dataType == Payload.TRANSFER) {
-      dataLen = Payload.transferLen;
-      prefixLen = len(Payload.transferPrefix);
-    }
-    else if (this.dataType == Payload.SWAP) {
-      dataLen = Payload.swapLen;
-      prefixLen = len(Payload.swapPrefix);
-    }
-    else if (this.dataType == Payload.SELL) {
-      dataLen = Payload.sellLen;
-      prefixLen = len(Payload.sellPrefix);
-    }
-    /* part */
-    this.dataStart = scriptLen - dataLen;
-    this.codeWithGenesisPart = scriptCode[ : this.dataStart - prefixLen ];
-    int codeWithGenesisLen = len(this.codeWithGenesisPart);
-    this.codePart = this.codeWithGenesisPart[ : codeWithGenesisLen - Payload.genesisLen];
-    /* genesis */
-    this.genesisOutpoint = this.codeWithGenesisPart[codeWithGenesisLen - Payload.genesisLen : codeWithGenesisLen - 4];
-    this.genesisOutputIdx = this.codeWithGenesisPart[codeWithGenesisLen - 4 : ];
-    /* data: */
-    bytes dataPart = scriptCode[this.dataStart : ];
-
-    /* support many kinds of data type */
-    if (this.dataType == Payload.MINT) {
-      this.blockHeader = dataPart[ : 80];
-      this.blockHeight = unpack(dataPart[80 : 80 + 8]);
-    }
-    else if (this.dataType == Payload.TRANSFER) {
-      this.ownerPkh = Ripemd160(dataPart[ : 20]);
-      this.amount = unpack(dataPart[20 : 20 + 8]);
-    }
-    else if (this.dataType == Payload.SWAP) {
-      this.ownerPkh = Ripemd160(dataPart[ : 20]);
-      this.amount = unpack(dataPart[20 : 20 + 8]);
-      /* swap */
-      this.genesisOutpointSwap = dataPart[28 : 28 + 36];
-      this.genesisOutputIdxSwap = dataPart[64 : 64 + 4];
-      this.amountSwap = unpack(dataPart[68 : 68 + 8]);
-    }
-    else if (this.dataType == Payload.SELL) {
-      this.ownerPkh = Ripemd160(dataPart[ : 20]);
-      this.amount = unpack(dataPart[20 : 20 + 8]);
-
-      this.satoshiAmountSell = unpack(dataPart[28 : 28 + 8]);
-    }
-  }
-
-  function dump() : bytes {
-    bytes payload = b'';
-    if (this.dataType == Payload.MINT) {
-      payload = Payload.mintPrefix +
-      this.blockHeader + num2bin(this.blockHeight, Util.OutputValueLen) +
-      this.dataType;
-    }
-    else if (this.dataType == Payload.TRANSFER) {
-      payload = Payload.transferPrefix +
-      this.ownerPkh + num2bin(this.amount, Util.OutputValueLen) +
-      this.dataType;
-    }
-    else if (this.dataType == Payload.SWAP) {
-      payload = Payload.swapPrefix +
-      this.ownerPkh + num2bin(this.amount, Util.OutputValueLen) +
-      this.genesisOutpointSwap + this.genesisOutputIdxSwap + num2bin(this.amountSwap, Util.OutputValueLen) +
-      this.dataType;
-    }
-    else if (this.dataType == Payload.SELL) {
-      payload = Payload.sellPrefix +
-      this.ownerPkh + num2bin(this.amount, Util.OutputValueLen) +
-      num2bin(this.satoshiAmountSell, Util.OutputValueLen) +
-      this.dataType;
-    }
-    return this.codeWithGenesisPart + payload;
-  }
-}
-
-contract Bitcoin {
+contract Token {
   int rabinPubKey;
 
   //////////////// mint
@@ -210,10 +82,10 @@ contract Bitcoin {
 
     // read previous locking script
     bytes lockingScript = Util.scriptCode(txPreimage);
-    Payload pl = new Payload(lockingScript);
+    PayloadToken pl = new PayloadToken(lockingScript);
 
     // dataType must be mint
-    require(pl.dataType == Payload.MINT);
+    require(pl.dataType == PayloadToken.MINT);
 
     // 溯源
     SatoTx st = new SatoTx(this.rabinPubKey, txPreimage, preTxOutpointSig, preTxOutpointMsg, preTxOutpointPadding, 0, b'', b'');
@@ -233,7 +105,7 @@ contract Bitcoin {
 
     pl.ownerPkh = receiverPkh;
     pl.amount = unpack(tokenAmount);
-    pl.dataType = Payload.TRANSFER;
+    pl.dataType = PayloadToken.TRANSFER;
     bytes outputScript1 = pl.dump();
     bytes output1 = Util.buildOutput(outputScript1, satoshiAmount1);
 
@@ -262,10 +134,10 @@ contract Bitcoin {
 
     // read previous locking script
     bytes lockingScript = Util.scriptCode(txPreimage);
-    Payload pl = new Payload(lockingScript);
+    PayloadToken pl = new PayloadToken(lockingScript);
 
     // dataType must be transfer
-    require(pl.dataType == Payload.TRANSFER);
+    require(pl.dataType == PayloadToken.TRANSFER);
 
     // authorize
     require(hash160(sender) == pl.ownerPkh);
@@ -308,10 +180,10 @@ contract Bitcoin {
 
     // read previous locking script
     bytes lockingScript = Util.scriptCode(txPreimage);
-    Payload pl = new Payload(lockingScript);
+    PayloadToken pl = new PayloadToken(lockingScript);
 
     // dataType must be transfer
-    require(pl.dataType == Payload.TRANSFER);
+    require(pl.dataType == PayloadToken.TRANSFER);
 
     // authorize
     require(hash160(sender) == pl.ownerPkh);
@@ -324,8 +196,8 @@ contract Bitcoin {
     require(st.verifySide(pl.codeWithGenesisPart, prevouts));
 
     /* other scriptCode */
-    Payload plOther = new Payload(sideTxUtxoMsg[44 : ]);
-    require(plOther.dataType == Payload.TRANSFER);
+    PayloadToken plOther = new PayloadToken(sideTxUtxoMsg[44 : ]);
+    require(plOther.dataType == PayloadToken.TRANSFER);
     require(plOther.codeWithGenesisPart == pl.codeWithGenesisPart);
 
     // merge
@@ -357,10 +229,10 @@ contract Bitcoin {
 
     // read previous locking script
     bytes lockingScript = Util.scriptCode(txPreimage);
-    Payload pl = new Payload(lockingScript);
+    PayloadToken pl = new PayloadToken(lockingScript);
 
     // dataType must be transfer
-    require(pl.dataType == Payload.TRANSFER);
+    require(pl.dataType == PayloadToken.TRANSFER);
 
     // authorize
     require(hash160(owner) == pl.ownerPkh);
@@ -376,7 +248,7 @@ contract Bitcoin {
     pl.genesisOutpointSwap = genesisOutpointSwap;
     pl.genesisOutputIdxSwap = genesisOutputIdxSwap;
     pl.amountSwap = tokenAmountSwap;
-    pl.dataType = Payload.SWAP;
+    pl.dataType = PayloadToken.SWAP;
     bytes outputScript0 = pl.dump();
     bytes output0 = Util.buildOutput(outputScript0, satoshiBefore);
 
@@ -399,10 +271,10 @@ contract Bitcoin {
 
     // read previous locking script
     bytes lockingScript = Util.scriptCode(txPreimage);
-    Payload pl = new Payload(lockingScript);
+    PayloadToken pl = new PayloadToken(lockingScript);
 
     // dataType must be swap
-    require(pl.dataType == Payload.SWAP);
+    require(pl.dataType == PayloadToken.SWAP);
 
     // authorize
     require(hash160(owner) == pl.ownerPkh);
@@ -415,7 +287,7 @@ contract Bitcoin {
     int satoshiBefore = Util.value(txPreimage);
 
     // 业务操作
-    pl.dataType = Payload.TRANSFER;
+    pl.dataType = PayloadToken.TRANSFER;
     bytes outputScript0 = pl.dump();
     bytes output0 = Util.buildOutput(outputScript0, satoshiBefore);
 
@@ -439,10 +311,10 @@ contract Bitcoin {
 
     // read previous locking script
     bytes lockingScript = Util.scriptCode(txPreimage);
-    Payload plA = new Payload(lockingScript);
+    PayloadToken plA = new PayloadToken(lockingScript);
 
     // dataType must be swap
-    require(plA.dataType == Payload.SWAP);
+    require(plA.dataType == PayloadToken.SWAP);
 
     // source
     SatoTx st = new SatoTx(this.rabinPubKey, txPreimage, preTxOutpointSig, preTxOutpointMsg, preTxOutpointPadding,
@@ -451,8 +323,8 @@ contract Bitcoin {
     require(st.verifySide(plA.codePart, prevouts));
 
     /* other scriptCode */
-    Payload plB = new Payload(sideTxUtxoMsg[44 : ]);
-    require(plB.dataType == Payload.TRANSFER);
+    PayloadToken plB = new PayloadToken(sideTxUtxoMsg[44 : ]);
+    require(plB.dataType == PayloadToken.TRANSFER);
     require(plB.codePart == plA.codePart);
 
     /* must match genesis */
@@ -466,7 +338,7 @@ contract Bitcoin {
     Ripemd160 ownerPkhA = plA.ownerPkh;
     // swap
     plA.ownerPkh = plB.ownerPkh;
-    plA.dataType = Payload.TRANSFER;
+    plA.dataType = PayloadToken.TRANSFER;
     bytes outputScript0 = plA.dump();
     bytes output0 = Util.buildOutput(outputScript0, satoshiAmountB);
 
@@ -495,10 +367,10 @@ contract Bitcoin {
 
     // read previous locking script
     bytes lockingScript = Util.scriptCode(txPreimage);
-    Payload plB = new Payload(lockingScript);
+    PayloadToken plB = new PayloadToken(lockingScript);
 
     // dataType must be transfer
-    require(plB.dataType == Payload.TRANSFER);
+    require(plB.dataType == PayloadToken.TRANSFER);
 
     // authorize
     require(hash160(owner) == plB.ownerPkh);
@@ -511,8 +383,8 @@ contract Bitcoin {
     require(st.verifySide(plB.codePart, prevouts));
 
     /* other scriptCode */
-    Payload plA = new Payload(sideTxUtxoMsg[44 : ]);
-    require(plA.dataType == Payload.SWAP);
+    PayloadToken plA = new PayloadToken(sideTxUtxoMsg[44 : ]);
+    require(plA.dataType == PayloadToken.SWAP);
     require(plA.codePart == plB.codePart);
 
     int satoshiAmountB = Util.value(txPreimage);
@@ -522,7 +394,7 @@ contract Bitcoin {
     Ripemd160 ownerPkhA = plA.ownerPkh;
 
     plA.ownerPkh = plB.ownerPkh;
-    plA.dataType = Payload.TRANSFER;
+    plA.dataType = PayloadToken.TRANSFER;
     bytes outputScript0 = plA.dump();
     bytes output0 = Util.buildOutput(outputScript0, satoshiAmountB);
 
@@ -552,10 +424,10 @@ contract Bitcoin {
 
     // read previous locking script
     bytes lockingScript = Util.scriptCode(txPreimage);
-    Payload pl = new Payload(lockingScript);
+    PayloadToken pl = new PayloadToken(lockingScript);
 
     // dataType must be transfer
-    require(pl.dataType == Payload.TRANSFER);
+    require(pl.dataType == PayloadToken.TRANSFER);
 
     // authorize
     require(hash160(owner) == pl.ownerPkh);
@@ -569,7 +441,7 @@ contract Bitcoin {
 
     // 业务操作
     pl.satoshiAmountSell = satoshAmountSell;
-    pl.dataType = Payload.SELL;
+    pl.dataType = PayloadToken.SELL;
     bytes outputScript0 = pl.dump();
     bytes output0 = Util.buildOutput(outputScript0, satoshiBefore);
 
@@ -592,10 +464,10 @@ contract Bitcoin {
 
     // read previous locking script
     bytes lockingScript = Util.scriptCode(txPreimage);
-    Payload pl = new Payload(lockingScript);
+    PayloadToken pl = new PayloadToken(lockingScript);
 
     // dataType must be sell
-    require(pl.dataType == Payload.SELL);
+    require(pl.dataType == PayloadToken.SELL);
 
     // authorize
     require(hash160(owner) == pl.ownerPkh);
@@ -608,7 +480,7 @@ contract Bitcoin {
     int satoshiBefore = Util.value(txPreimage);
 
     // 业务操作
-    pl.dataType = Payload.TRANSFER;
+    pl.dataType = PayloadToken.TRANSFER;
     bytes outputScript0 = pl.dump();
     bytes output0 = Util.buildOutput(outputScript0, satoshiBefore);
 
@@ -631,10 +503,10 @@ contract Bitcoin {
 
     // read previous locking script
     bytes lockingScript = Util.scriptCode(txPreimage);
-    Payload pl = new Payload(lockingScript);
+    PayloadToken pl = new PayloadToken(lockingScript);
 
     // dataType must be sell
-    require(pl.dataType == Payload.SELL);
+    require(pl.dataType == PayloadToken.SELL);
 
     // 溯源
     SatoTx st = new SatoTx(this.rabinPubKey, txPreimage, preTxOutpointSig, preTxOutpointMsg, preTxOutpointPadding, 0, b'', b'');
@@ -646,7 +518,7 @@ contract Bitcoin {
 
     // 业务操作
     pl.ownerPkh = buyerPkh;
-    pl.dataType = Payload.TRANSFER;
+    pl.dataType = PayloadToken.TRANSFER;
     bytes outputScript0 = pl.dump();
     bytes output0 = Util.buildOutput(outputScript0, satoshiAmount0);
 
@@ -671,10 +543,10 @@ contract Bitcoin {
 
     // read previous locking script
     bytes lockingScript = Util.scriptCode(txPreimage);
-    Payload pl = new Payload(lockingScript);
+    PayloadToken pl = new PayloadToken(lockingScript);
 
     // dataType must be transfer
-    require(pl.dataType == Payload.TRANSFER);
+    require(pl.dataType == PayloadToken.TRANSFER);
 
     // authorize
     require(hash160(sender) == pl.ownerPkh);

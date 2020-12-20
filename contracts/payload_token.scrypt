@@ -1,0 +1,140 @@
+import "util.scrypt";
+
+/**
+* A token protocol based on UTXO model
+*
+*   codePart, GenesisPart, blockHeader, blockHeight, MINT
+*   codePart, GenesisPart, ownerPkh, tokenAmount, TRANSFER
+*   codePart, GenesisPartA, ownerPkhA, tokenAmountA, GenesisPartB, tokenAmountB, SWAP
+*   codePart, GenesisPart, ownerPkh, tokenAmount, satoshiAmount, SELL
+*/
+
+contract PayloadToken {
+  /* base */
+  int dataStart;
+  bytes codePart;
+  bytes codeWithGenesisPart;
+  bytes dataType;
+
+  /* 溯源需匹配genesisTx input的outpoint 和output的index */
+  bytes genesisOutpoint;
+  bytes genesisOutputIdx;
+
+  /* mint */
+  bytes blockHeader;
+  int blockHeight;
+
+  /* transfer */
+  Ripemd160 ownerPkh;
+  int amount;
+
+  /* swap */
+  bytes genesisOutpointSwap;
+  bytes genesisOutputIdxSwap;
+  int amountSwap;
+
+  /* sell */
+  int satoshiAmountSell;
+
+  static bytes MINT = b'00';
+  static bytes TRANSFER = b'01';
+  static bytes SWAP = b'02';
+  static bytes SELL = b'03';
+
+  static bytes mintPrefix = b'4c59';
+  static bytes transferPrefix = b'1d';
+  static bytes swapPrefix = b'4c4d';
+  static bytes sellPrefix = b'25';
+
+  static int mintLen = 89;
+  static int transferLen = 29;
+  static int swapLen = 77;
+  static int sellLen = 37;
+
+  static int genesisLen = 40;
+
+  constructor(bytes scriptCode) {
+    int scriptLen = len(scriptCode);
+    this.dataType = scriptCode[scriptLen - 1 : ];
+
+    int dataLen = 0;
+    int prefixLen = 0;
+    if (this.dataType == PayloadToken.MINT) {
+      dataLen = PayloadToken.mintLen;
+      prefixLen = len(PayloadToken.mintPrefix);
+    }
+    else if (this.dataType == PayloadToken.TRANSFER) {
+      dataLen = PayloadToken.transferLen;
+      prefixLen = len(PayloadToken.transferPrefix);
+    }
+    else if (this.dataType == PayloadToken.SWAP) {
+      dataLen = PayloadToken.swapLen;
+      prefixLen = len(PayloadToken.swapPrefix);
+    }
+    else if (this.dataType == PayloadToken.SELL) {
+      dataLen = PayloadToken.sellLen;
+      prefixLen = len(PayloadToken.sellPrefix);
+    }
+    /* part */
+    this.dataStart = scriptLen - dataLen;
+    this.codeWithGenesisPart = scriptCode[ : this.dataStart - prefixLen ];
+    int codeWithGenesisLen = len(this.codeWithGenesisPart);
+    this.codePart = this.codeWithGenesisPart[ : codeWithGenesisLen - PayloadToken.genesisLen];
+    /* genesis */
+    this.genesisOutpoint = this.codeWithGenesisPart[codeWithGenesisLen - PayloadToken.genesisLen : codeWithGenesisLen - 4];
+    this.genesisOutputIdx = this.codeWithGenesisPart[codeWithGenesisLen - 4 : ];
+    /* data: */
+    bytes dataPart = scriptCode[this.dataStart : ];
+
+    /* support many kinds of data type */
+    if (this.dataType == PayloadToken.MINT) {
+      this.blockHeader = dataPart[ : 80];
+      this.blockHeight = unpack(dataPart[80 : 80 + 8]);
+    }
+    else if (this.dataType == PayloadToken.TRANSFER) {
+      this.ownerPkh = Ripemd160(dataPart[ : 20]);
+      this.amount = unpack(dataPart[20 : 20 + 8]);
+    }
+    else if (this.dataType == PayloadToken.SWAP) {
+      this.ownerPkh = Ripemd160(dataPart[ : 20]);
+      this.amount = unpack(dataPart[20 : 20 + 8]);
+      /* swap */
+      this.genesisOutpointSwap = dataPart[28 : 28 + 36];
+      this.genesisOutputIdxSwap = dataPart[64 : 64 + 4];
+      this.amountSwap = unpack(dataPart[68 : 68 + 8]);
+    }
+    else if (this.dataType == PayloadToken.SELL) {
+      this.ownerPkh = Ripemd160(dataPart[ : 20]);
+      this.amount = unpack(dataPart[20 : 20 + 8]);
+
+      this.satoshiAmountSell = unpack(dataPart[28 : 28 + 8]);
+    }
+  }
+
+  function dump() : bytes {
+    bytes payload = b'';
+    if (this.dataType == PayloadToken.MINT) {
+      payload = PayloadToken.mintPrefix +
+      this.blockHeader + num2bin(this.blockHeight, Util.OutputValueLen) +
+      this.dataType;
+    }
+    else if (this.dataType == PayloadToken.TRANSFER) {
+      payload = PayloadToken.transferPrefix +
+      this.ownerPkh + num2bin(this.amount, Util.OutputValueLen) +
+      this.dataType;
+    }
+    else if (this.dataType == PayloadToken.SWAP) {
+      payload = PayloadToken.swapPrefix +
+      this.ownerPkh + num2bin(this.amount, Util.OutputValueLen) +
+      this.genesisOutpointSwap + this.genesisOutputIdxSwap + num2bin(this.amountSwap, Util.OutputValueLen) +
+      this.dataType;
+    }
+    else if (this.dataType == PayloadToken.SELL) {
+      payload = PayloadToken.sellPrefix +
+      this.ownerPkh + num2bin(this.amount, Util.OutputValueLen) +
+      num2bin(this.satoshiAmountSell, Util.OutputValueLen) +
+      this.dataType;
+    }
+    return this.codeWithGenesisPart + payload;
+  }
+}

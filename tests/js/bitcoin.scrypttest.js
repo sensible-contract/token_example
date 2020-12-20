@@ -6,7 +6,7 @@ var tx = newTx();
 const outputAmount = 22222;
 
 describe("Test sCrypt contract UTXO Token In Javascript", () => {
-  let bitcoinToken, lockingScriptCodePart, result;
+  let token, lockingScriptCodePart, result;
 
   const privateKey1 = new bsv.PrivateKey.fromRandom("testnet");
   const publicKey1 = bsv.PublicKey.fromPrivateKey(privateKey1);
@@ -17,16 +17,16 @@ describe("Test sCrypt contract UTXO Token In Javascript", () => {
   const publicKey3 = bsv.PublicKey.fromPrivateKey(privateKey3);
 
   before(() => {
-    const BitcoinToken = buildContractClass(compileContract("bitcoin.scrypt"));
-    bitcoinToken = new BitcoinToken();
+    const Token = buildContractClass(compileContract("token.scrypt"));
+    token = new Token();
 
     // code part
-    lockingScriptCodePart = bitcoinToken.codePart.toASM();
+    lockingScriptCodePart = token.codePart.toASM();
   });
 
   it("should succeed when one token is split into two", () => {
     // split 100 tokens
-    bitcoinToken.setDataPart(toHex(publicKey1) + num2bin(10, DataLen) + num2bin(90, DataLen));
+    token.setDataPart(toHex(publicKey1) + num2bin(10, DataLen) + num2bin(90, DataLen));
 
     const testSplit = (privKey, balance0, balance1, balanceInput0 = balance0, balanceInput1 = balance1) => {
       tx = new bsv.Transaction();
@@ -37,7 +37,7 @@ describe("Test sCrypt contract UTXO Token In Javascript", () => {
           outputIndex: 0,
           script: "",
         }),
-        bsv.Script.fromASM(bitcoinToken.lockingScript.toASM()),
+        bsv.Script.fromASM(token.lockingScript.toASM()),
         inputSatoshis
       );
 
@@ -59,11 +59,11 @@ describe("Test sCrypt contract UTXO Token In Javascript", () => {
         );
       }
 
-      bitcoinToken.txContext = { tx: tx, inputIndex, inputSatoshis };
+      token.txContext = { tx: tx, inputIndex, inputSatoshis };
 
-      const preimage = getPreimage(tx, bitcoinToken.lockingScript.toASM(), inputSatoshis, inputIndex);
-      const sig = signTx(tx, privKey, bitcoinToken.lockingScript.toASM(), inputSatoshis);
-      return bitcoinToken.split(
+      const preimage = getPreimage(tx, token.lockingScript.toASM(), inputSatoshis, inputIndex);
+      const sig = signTx(tx, privKey, token.lockingScript.toASM(), inputSatoshis);
+      return token.split(
         new Sig(toHex(sig)),
         new PubKey(toHex(publicKey2)),
         balanceInput0,
@@ -150,13 +150,13 @@ describe("Test sCrypt contract UTXO Token In Javascript", () => {
         })
       );
 
-      bitcoinToken.txContext = { tx: tx, inputIndex, inputSatoshis };
+      token.txContext = { tx: tx, inputIndex, inputSatoshis };
 
-      bitcoinToken.setDataPart(inputIndex == 0 ? dataPart0 : dataPart1);
+      token.setDataPart(inputIndex == 0 ? dataPart0 : dataPart1);
 
       const preimage = getPreimage(tx, inputIndex == 0 ? lockingScript0 : lockingScript1, inputSatoshis, inputIndex);
       const sig = signTx(tx, inputIndex == 0 ? privateKey1 : privateKey2, inputIndex == 0 ? lockingScript0 : lockingScript1, inputSatoshis, inputIndex);
-      return bitcoinToken.merge(
+      return token.merge(
         new Sig(toHex(sig)),
         new PubKey(toHex(publicKey3)),
         new Bytes(prevouts),
@@ -188,7 +188,7 @@ describe("Test sCrypt contract UTXO Token In Javascript", () => {
 
   it("should succeed when one token UTXO is burnt", () => {
     // burn 100 tokens
-    bitcoinToken.setDataPart(toHex(publicKey1) + num2bin(10, DataLen) + num2bin(90, DataLen));
+    token.setDataPart(toHex(publicKey1) + num2bin(10, DataLen) + num2bin(90, DataLen));
 
     const testBurn = (privKey) => {
       tx = new bsv.Transaction();
@@ -199,7 +199,7 @@ describe("Test sCrypt contract UTXO Token In Javascript", () => {
           outputIndex: 0,
           script: "",
         }),
-        bsv.Script.fromASM(bitcoinToken.lockingScript.toASM()),
+        bsv.Script.fromASM(token.lockingScript.toASM()),
         inputSatoshis
       );
 
@@ -211,9 +211,9 @@ describe("Test sCrypt contract UTXO Token In Javascript", () => {
         })
       );
 
-      const preimage = getPreimage(tx, bitcoinToken.lockingScript.toASM(), inputSatoshis, inputIndex);
-      const sig = signTx(tx, privKey, bitcoinToken.lockingScript.toASM(), inputSatoshis);
-      return bitcoinToken.burn(new Sig(toHex(sig)), new Ripemd160(toHex(pkh1)), outputAmount, new SigHashPreimage(toHex(preimage)));
+      const preimage = getPreimage(tx, token.lockingScript.toASM(), inputSatoshis, inputIndex);
+      const sig = signTx(tx, privKey, token.lockingScript.toASM(), inputSatoshis);
+      return token.burn(new Sig(toHex(sig)), new Ripemd160(toHex(pkh1)), outputAmount, new SigHashPreimage(toHex(preimage)));
     };
 
     result = testBurn(privateKey1).verify({ tx: tx, inputIndex, inputSatoshis });
