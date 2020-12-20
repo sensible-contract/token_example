@@ -7,83 +7,45 @@ import "payload_nft.scrypt";
 /**
 * A token protocol based on UTXO model
 *
+* 该合约实现了一个UTXO模式的Token协议，可发行任意多种采用该协议的token。
+* 协议支持Token转账、不同token之间兑换、和另一种NFT兑换、和bsv兑换等功能。
 *
-* mint:
-*   codePart, GenesisPart, blockHeader0, blockHeight, MINT
-*    ->
-*   codePart, GenesisPart, blockHeader1, blockHeight+1, MINT
-*   codePart, GenesisPart, ownerPkh, tokenAmount, TRANSFER
+* 当前合约支持函数如下:
+*  mint: 发行新的token
+*  split: 将token余额一分为二
+*  merge: 将两个token余额合二为一
+*  makeSwap: 发起不同token之间的兑换
+*  cancelSwap：取消token兑换
+*  finishSwap：完成token兑换，发起方合约执行
+*  takeSwap：完成token兑换，参与方合约执行
+*  takeSwapNFT：完成token到nft的兑换，参与方合约执行
+*  sell：发起token到bsv的兑换
+*  cancelSell：取消token到bsv的兑换
+*  buy：完成bsv到token的兑换，参与方合约执行
+*  burn：销毁token
 *
-* split:
-*   codePart, GenesisPart, ownerPkh, tokenAmount, TRANSFER
-*    ->
-*   codePart, GenesisPart, ownerPkhA, tokenAmount0, TRANSFER
-*   codePart, GenesisPart, ownerPkhB, tokenAmount1, TRANSFER
+* 各个函数详细处理逻辑见各自文档。
+* 暂约定合约的函数花费utxo和产生utxo时，用箭头符号(->)来区分Tx内的input和output，(->)上为input花费的UTXO数据，下为output产生的UTXO数据。
 *
-* merge:
-*   codePart, GenesisPart, ownerPkhA, tokenAmount0, TRANSFER
-*   codePart, GenesisPart, ownerPkhB, tokenAmount1, TRANSFER
-*    ->
-*   codePart, GenesisPart, ownerPkh, tokenAmount, TRANSFER
-*
-*
-* makeSwap:
-*   codePart, GenesisPartA, ownerPkhA, tokenAmountA, TRANSFER
-*    ->
-*   codePart, GenesisPartA, ownerPkhA, tokenAmountA, GenesisPartB, tokenAmountB, SWAP
-*
-* cancelSwap:
-*   codePart, GenesisPartA, ownerPkhA, tokenAmountA, GenesisPartB, tokenAmountB, SWAP
-*    ->
-*   codePart, GenesisPartA, ownerPkhA, tokenAmountA, TRANSFER
-*
-*
-* takeSwap/finishSwap（能否部分成交？）:
-*   (finishSwap) codePart, GenesisPartA, ownerPkhA, tokenAmountA, GenesisPartB, tokenAmountB, SWAP
-*   (takeSwap)   codePart, GenesisPartB, ownerPkhB, tokenAmountB, TRANSFER
-*    ->
-*   codePart, GenesisPartA, ownerPkhB, tokenAmountA, TRANSFER
-*   codePart, GenesisPartB, ownerPkhA, tokenAmountB, TRANSFER
-*
-*
-*（Token不检查NFT合约类型codePartNFT，允许和任意符合数据格式的NFT合约兑换）
-* takeSwapNFT:
-*   (NFT.finishSwapToken) codePartNFT, GenesisPartA, ownerPkhA, tokenId, hash256(codePartTkn + GenesisPartB), tokenAmountB, SWAP
-*   (Tkn.takeSwapNFT)     codePartTkn, GenesisPartB, ownerPkhB, tokenAmountB, TRANSFER
-*    ->
-*   codePartNFT, GenesisPartA, ownerPkhB, tokenId, TRANSFER
-*   codePartTkn, GenesisPartB, ownerPkhA, tokenAmountB, TRANSFER
-*
-*
-* sell:
-*   codePart, GenesisPart, ownerPkhA, tokenAmount, TRANSFER
-*    ->
-*   codePart, GenesisPart, ownerPkhA, tokenAmount, satoshiAmount, SELL
-*
-* buy（能否部分成交？）:
-*   codePart, GenesisPart, ownerPkhA, tokenAmount, satoshiAmount, SELL
-*   ownerPkhB, satoshiAmount
-*    ->
-*   codePart, GenesisPart, ownerPkhB, tokenAmount, TRANSFER
-*   ownerPkhA, satoshiAmount
-*
-*
-* mint函数允许公开按blockHeight递增发行token，输入为1个MINT，输出为1个MINT，1个TRANSFER
-*      发行规则和Bitcoin一致：
-*      需要提供blockHeader, 后一个blockHeader中必须包括前一个blockHeader的hash256；
-*      满足难度约束； 每次发行量按210000块减半；初始一次为50个，但没有实现交易费。
-*
-* split函数允许用户分割token，输入为1个TRANSFER，输出为2个TRANSFER。
-* merge函数允许用户合并2个token，输入为2个TRANSFER，输出为1个TRANSFER.
-*
-* burn 函数用于销毁用户的token，输入为1个TRANSFER，输出为1个找零
 */
-
 
 contract Token {
   int rabinPubKey;
 
   //////////////// mint
+  /*
+  * mint:
+  *   codePart, GenesisPart, blockHeader0, blockHeight, MINT
+  *    ->
+  *   codePart, GenesisPart, blockHeader1, blockHeight+1, MINT
+  *   codePart, GenesisPart, ownerPkh, tokenAmount, TRANSFER
+  *
+  * mint函数允许公开按blockHeight递增发行token，输入为1个MINT，输出为1个MINT，1个TRANSFER
+  *      发行规则和Bitcoin一致：
+  *      需要提供blockHeader, 后一个blockHeader中必须包括前一个blockHeader的hash256；
+  *      满足难度约束； 每次发行量按210000块减半；初始一次为50个，但没有实现交易费。
+  *
+  */
   public function mint(SigHashPreimage txPreimage,
     int preTxOutpointSig, bytes preTxOutpointMsg, bytes preTxOutpointPadding,
     bytes blockHeader,
@@ -133,6 +95,15 @@ contract Token {
   }
 
   //////////////// split
+  /*
+  * split:
+  *   codePart, GenesisPart, ownerPkh, tokenAmount, TRANSFER
+  *    ->
+  *   codePart, GenesisPart, ownerPkhA, tokenAmount0, TRANSFER
+  *   codePart, GenesisPart, ownerPkhB, tokenAmount1, TRANSFER
+  *
+  * split函数允许用户分割token，输入为1个TRANSFER，输出为2个TRANSFER。
+  */
   public function split(SigHashPreimage txPreimage,
     int preTxOutpointSig, bytes preTxOutpointMsg, bytes preTxOutpointPadding,
 
@@ -183,6 +154,15 @@ contract Token {
   }
 
   //////////////// merge
+  /*
+  * merge:
+  *   codePart, GenesisPart, ownerPkhA, tokenAmount0, TRANSFER
+  *   codePart, GenesisPart, ownerPkhB, tokenAmount1, TRANSFER
+  *    ->
+  *   codePart, GenesisPart, ownerPkh, tokenAmount, TRANSFER
+  *
+  * merge函数允许用户合并2个token，输入为2个TRANSFER，输出为1个TRANSFER.
+  */
   public function merge(SigHashPreimage txPreimage,
     int preTxOutpointSig, bytes preTxOutpointMsg, bytes preTxOutpointPadding,
     int sideTxUtxoSig, bytes sideTxUtxoMsg, bytes sideTxUtxoPadding,
@@ -230,6 +210,12 @@ contract Token {
   }
 
   //////////////// A make swap
+  /*
+  * makeSwap:
+  *   codePart, GenesisPartA, ownerPkhA, tokenAmountA, TRANSFER
+  *    ->
+  *   codePart, GenesisPartA, ownerPkhA, tokenAmountA, GenesisPartB, tokenAmountB, SWAP
+  */
   public function makeSwap(SigHashPreimage txPreimage,
     int preTxOutpointSig, bytes preTxOutpointMsg, bytes preTxOutpointPadding,
     Sig ownerSig, PubKey owner,
@@ -276,6 +262,12 @@ contract Token {
   }
 
   //////////////// A cancel swap
+  /*
+  * cancelSwap:
+  *   codePart, GenesisPartA, ownerPkhA, tokenAmountA, GenesisPartB, tokenAmountB, SWAP
+  *    ->
+  *   codePart, GenesisPartA, ownerPkhA, tokenAmountA, TRANSFER
+  */
   public function cancelSwap(SigHashPreimage txPreimage,
     int preTxOutpointSig, bytes preTxOutpointMsg, bytes preTxOutpointPadding,
     Sig ownerSig, PubKey owner,
@@ -315,6 +307,14 @@ contract Token {
   }
 
   //////////////// A finish swap
+  /*
+  * finishSwap（能否部分成交？）:
+  *   (finishSwap) codePart, GenesisPartA, ownerPkhA, tokenAmountA, GenesisPartB, tokenAmountB, SWAP
+  *   (takeSwap)   codePart, GenesisPartB, ownerPkhB, tokenAmountB, TRANSFER
+  *    ->
+  *   codePart, GenesisPartA, ownerPkhB, tokenAmountA, TRANSFER
+  *   codePart, GenesisPartB, ownerPkhA, tokenAmountB, TRANSFER
+  */
   public function finishSwap(SigHashPreimage txPreimage,
     int preTxOutpointSig, bytes preTxOutpointMsg, bytes preTxOutpointPadding,
     int sideTxUtxoSig, bytes sideTxUtxoMsg, bytes sideTxUtxoPadding,
@@ -370,6 +370,14 @@ contract Token {
   }
 
   //////////////// B take swap
+  /*
+  * takeSwap（能否部分成交？）:
+  *   (finishSwap) codePart, GenesisPartA, ownerPkhA, tokenAmountA, GenesisPartB, tokenAmountB, SWAP
+  *   (takeSwap)   codePart, GenesisPartB, ownerPkhB, tokenAmountB, TRANSFER
+  *    ->
+  *   codePart, GenesisPartA, ownerPkhB, tokenAmountA, TRANSFER
+  *   codePart, GenesisPartB, ownerPkhA, tokenAmountB, TRANSFER
+  */
   public function takeSwap(SigHashPreimage txPreimage,
     int preTxOutpointSig, bytes preTxOutpointMsg, bytes preTxOutpointPadding,
     int sideTxUtxoSig, bytes sideTxUtxoMsg, bytes sideTxUtxoPadding,
@@ -425,8 +433,16 @@ contract Token {
     require(hashOutputs == Util.hashOutputs(txPreimage));
   }
 
-
   //////////////// B take swap NFT
+  /*
+  *（Token不检查NFT合约类型codePartNFT，允许和任意符合数据格式的NFT合约兑换）
+  * takeSwapNFT:
+  *   (NFT.finishSwapToken) codePartNFT, GenesisPartA, ownerPkhA, tokenId, hash256(codePartTkn + GenesisPartB), tokenAmountB, SWAP
+  *   (Tkn.takeSwapNFT)     codePartTkn, GenesisPartB, ownerPkhB, tokenAmountB, TRANSFER
+  *    ->
+  *   codePartNFT, GenesisPartA, ownerPkhB, tokenId, TRANSFER
+  *   codePartTkn, GenesisPartB, ownerPkhA, tokenAmountB, TRANSFER
+  */
   public function takeSwapNFT(SigHashPreimage txPreimage,
     int preTxOutpointSig, bytes preTxOutpointMsg, bytes preTxOutpointPadding,
     int sideTxUtxoSig, bytes sideTxUtxoMsg, bytes sideTxUtxoPadding,
@@ -457,7 +473,8 @@ contract Token {
     SatoTx st = new SatoTx(this.rabinPubKey, txPreimage, preTxOutpointSig, preTxOutpointMsg, preTxOutpointPadding,
       sideTxUtxoSig, sideTxUtxoMsg, sideTxUtxoPadding);
     require(st.verifyGenesis(plB.codeWithGenesisPart, SatoTx.disableUtxoInGenesisTx, b''));
-    require(st.verifySide(b'', prevouts)); /* check prevoutpoint but ignore codePartA */
+    require(st.verifySide(b'', prevouts));
+    /* check prevoutpoint but ignore codePartA */
 
     int satoshiAmountB = Util.value(txPreimage);
     int satoshiAmountA = unpack(sideTxUtxoMsg[36 : 44]);
@@ -482,6 +499,12 @@ contract Token {
   }
 
   //////////////// A sell
+  /*
+  * sell:
+  *   codePart, GenesisPart, ownerPkhA, tokenAmount, TRANSFER
+  *    ->
+  *   codePart, GenesisPart, ownerPkhA, tokenAmount, satoshiAmount, SELL
+  */
   public function sell(SigHashPreimage txPreimage,
     int preTxOutpointSig, bytes preTxOutpointMsg, bytes preTxOutpointPadding,
     Sig ownerSig, PubKey owner,
@@ -525,6 +548,12 @@ contract Token {
   }
 
   //////////////// A cancel sell
+  /*
+  * cancelSell:
+  *   codePart, GenesisPart, ownerPkhA, tokenAmount, satoshiAmount, SELL
+  *    ->
+  *   codePart, GenesisPart, ownerPkhA, tokenAmount, TRANSFER
+  */
   public function cancelSell(SigHashPreimage txPreimage,
     int preTxOutpointSig, bytes preTxOutpointMsg, bytes preTxOutpointPadding,
     Sig ownerSig, PubKey owner,
@@ -564,6 +593,14 @@ contract Token {
   }
 
   //////////////// B buy
+  /*
+  * buy（能否部分成交？）:
+  *   codePart, GenesisPart, ownerPkhA, tokenAmount, satoshiAmount, SELL
+  *   ownerPkhB, satoshiAmount
+  *    ->
+  *   codePart, GenesisPart, ownerPkhB, tokenAmount, TRANSFER
+  *   ownerPkhA, satoshiAmount
+  */
   public function buy(SigHashPreimage txPreimage,
     int preTxOutpointSig, bytes preTxOutpointMsg, bytes preTxOutpointPadding,
     Ripemd160 buyerPkh, int satoshiAmount0,
@@ -605,6 +642,9 @@ contract Token {
   }
 
   //////////////// burn a token back to normal bitcoins
+  /*
+  * burn 函数用于销毁用户的token，输入为1个TRANSFER，输出为1个找零
+  */
   public function burn(SigHashPreimage txPreimage,
     Sig senderSig, PubKey sender,
     Ripemd160 receiverPkh, int satoshiAmount) {

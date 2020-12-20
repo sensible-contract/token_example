@@ -1,12 +1,27 @@
 import "util.scrypt";
 
 /**
-* A token protocol based on UTXO model
+* token protocol payload parser
 *
-*   codePart, GenesisPart, blockHeader, blockHeight, MINT
-*   codePart, GenesisPart, ownerPkh, tokenAmount, TRANSFER
-*   codePart, GenesisPartA, ownerPkhA, tokenAmountA, GenesisPartB, tokenAmountB, SWAP
-*   codePart, GenesisPart, ownerPkh, tokenAmount, satoshiAmount, SELL
+* PayloadToken负责解码/编码Token合约的数据。构造函数解码，dump函数编码。
+*
+* bsv合约可以由脚本代码部分和数据部分组成，两部分之间用 OP_RETURN 操作符隔开。
+* 当锁定脚本执行到OP_RETURN时便会终止，其后的数据部分不会被处理。
+* 但当前数据部分依然是一条或多条正常的OP_DATAPUSHX语句，附带着确定数量的字节内容。
+*
+* Token合约的数据格式设计如下：
+*
+* 最后一个字节为数据格式类型，分为4种：ISSUE、TRANSFER、SWAP、SELL
+*
+* 1. codePart 为合约代码。结尾还包括2字节额外内容：OP_RETURN操作符 和 OP_DATAPUSH(一个字节0x28)，表示接下来有40字节的GenesisPart。
+* 2. GenesisPart 为合约溯源数据。包括genesisTx的 某utxo的outpoint，以及创建合约的outputIndex。共 32+4+4=40 字节。
+* 3. 其后再包括一个OP_DATAPUSH(dataPrefix),可能有多字节，取决于其他数据data的长度。
+* 4. 接下来便是其他数据部分聚合，比如：pubkeyHash有20字节，tokenAmount有8字节，satoshiAmount有8字节。
+*
+*  codePart, GenesisPart, blockHeader, blockHeight, MINT
+*  codePart, GenesisPart, ownerPkh, tokenAmount, TRANSFER
+*  codePart, GenesisPartA, ownerPkhA, tokenAmountA, GenesisPartB, tokenAmountB, SWAP
+*  codePart, GenesisPart, ownerPkh, tokenAmount, satoshiAmount, SELL
 */
 
 contract PayloadToken {
@@ -90,8 +105,7 @@ contract PayloadToken {
     if (this.dataType == PayloadToken.MINT) {
       this.blockHeader = dataPart[ : 80];
       this.blockHeight = unpack(dataPart[80 : 80 + 8]);
-    }
-    else {
+    } else {
       this.ownerPkh = Ripemd160(dataPart[ : 20]);
       this.amount = unpack(dataPart[20 : 20 + 8]);
     }
@@ -133,3 +147,4 @@ contract PayloadToken {
     return this.codeWithGenesisPart + payload;
   }
 }
+

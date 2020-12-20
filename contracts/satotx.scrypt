@@ -1,5 +1,22 @@
 import "util.scrypt";
 
+/*
+* preTxOutpointMsg 包含了前一个Tx花费的某UTXO的相关内容，数据结构如下：
+*
+*     SpendByTxID, UTXOTxID+Index, value, scriptCode
+*
+* sideTxUtxoMsg 包含了本Tx花费的某UTXO的相关内容，数据结构如下：
+*
+*     UTXOTxID+Index, value, scriptCode
+*
+* 其中:
+* TxID 32 Bytes
+* Index 4 Bytes
+* value 8 Bytes
+*
+*/
+
+
 contract SatoTx {
   int rabinPubKey;
   SigHashPreimage txPreimage;
@@ -14,35 +31,47 @@ contract SatoTx {
   static bytes disableUtxoInGenesisTx = b'64697361626c654f687465725574786f4d6f76696e6746726f6d47656e65736973547821';
 
   /* 溯源
-   * 查看生成当前花费的utxo 的Tx内，是否有和当前脚本一致的锁定脚本。
-   * 或者有Genesis Utxo
+   * 查看前一个Tx，是否是GenesisTx；
+   * 或者前一个Tx内，是否有被花费的UTXO的锁定脚本和当前运行的合约锁定脚本一致。
    */
   public function verifyGenesis(bytes codeWithGenesisPart, bytes genesisOutpoint, bytes genesisOutputIdx) {
     /* 76 = 32 + 32 + 4 + 8 */
     int scriptOffset = 76;
 
     // preTxOutpointMsg: txId, preTxId+index, value, lockingScript
+    /* 确保溯源消息超过最短长度 */
     require(len(this.preTxOutpointMsg) > scriptOffset);
 
-    //  签名校验preTx的outpoint
+    // 签名校验溯源消息
     RabinSignature rb = new RabinSignature();
     require(rb.verifySig(this.preTxOutpointSig, this.preTxOutpointMsg, this.preTxOutpointPadding, this.rabinPubKey));
 
-    // 必须是本合约的preTx
+    // 通过前一个UTXO溯源的spendByTxId, 必须确保spendByTxId接下来又是被本合约花费
     bytes thisOutpoint = Util.outpoint(this.txPreimage);
     require(thisOutpoint[ : 32] == this.preTxOutpointMsg[ : 32]);
 
-    // transfer不检查是否匹配GenesisTx第一个outpoint
-    // mint 需要检查是否匹配GenesisTx第一个outpoint
-
     bool matchGenesis = false;
+
+    /* 检查前一个UTXO，判断是否满足溯源条件之一*/
     bytes preOutpoint = this.preTxOutpointMsg[32 : 32 + 36];
     if (preOutpoint == genesisOutpoint) {
+        /* 如果前一个Tx花费的某UTXO的Outpoint是创世Outpoint */
+
+        require(thisOutpoint[32 : 36] == genesisOutputIdx);
+        /* 并且本Tx花费的UTXO的output index匹配 genesisOutputIdx ，则满足溯源。
+         *
+         * 这样可以限定GenesisTx内，只能创建一个可用合约UTXO。
+         * 避免了GenesisTx内一次创建多个相同的可用issue合约，但同时可能会导致在GenesisTx直接发行的Token无法使用。
+         *
+         * 为了更明确，当前token合约的transfer实现函数溯源检查时已经主动禁用了GenesisTx判断条件。
+         * 调用verifyGenesis的genesisOutpoint参数为'disableUtxoInGenesisTx'。
+         */
       matchGenesis = true;
-      // output输出index必须匹配 genesisOutputIdx
-      require(thisOutpoint[32 : 36] == genesisOutputIdx);
     } else {
-      //必须包含codeWithGenesisPart
+        /* 如果前一个Tx花费的某UTXO的锁定脚本能匹配传入的codeWithGenesisPart，则满足溯源
+         *
+         *  传入的codeWithGenesisPart一定是从本Tx花费的UTXO的锁定脚本中来。
+        */
       int scriptCodeLen = len(codeWithGenesisPart);
       require(len(this.preTxOutpointMsg) > scriptOffset + scriptCodeLen);
       if (this.preTxOutpointMsg[scriptOffset : scriptOffset + scriptCodeLen] == codeWithGenesisPart) {
@@ -53,9 +82,14 @@ contract SatoTx {
     require(matchGenesis == true);
   }
 
-  /* 查看当前Tx其他某输入的锁定脚本（参数：codePart），是否和正在执行的锁定脚本一致
-   * 1. 输入参数必须为当前Tx的非正在执行的utxo
-   * 2. 锁定脚本必须一致
+  /* SideCheck
+   * 查看当前Tx其他某输入的锁定脚本情况，需检查：
+   * 1. 提供的sideTxUtxoMsg必须是当前Tx的非正在执行的某一UTXO合约
+   *
+   * 如果锁定脚本不为空（参数：codePart）还需检查：
+   * 2. 提供的sideTxUtxoMsg内必须包含codePart锁定脚本
+   *    如果codePart是当前正在执行的合约，则可实现要求检查的SideCode和当前合约一致
+   *    如果codePart为空，则此时先跳过脚本判断，可在合约内再行通过脚本hash判断合约类型
    */
   public function verifySide(bytes codePart, bytes prevouts) {
     /* 44 = 32 + 4 + 8 */
@@ -64,19 +98,20 @@ contract SatoTx {
     // this ensures prevouts is the preimage of hashPrevouts
     require(hash256(prevouts) == Util.hashPrevouts(this.txPreimage));
 
-    // sideTxUtxoMsg: txId+index, value, lockingScript
+    /* 确保SideCheck消息超过最短长度 */
     require(len(this.sideTxUtxoMsg) > scriptOffset);
 
-    /*  检查side outpoint script + value rabin签名 */
+    // 签名校验sideTxUtxoMsg消息
     RabinSignature rb = new RabinSignature();
     require(rb.verifySig(this.sideTxUtxoSig, this.sideTxUtxoMsg, this.sideTxUtxoPadding, this.rabinPubKey));
 
-    // 不可以是当前输出
+    // 不可以是当前正在执行的合约，因为整个脚本数据可以从preimage获取，无需用sideTxUtxoMsg提供
     bytes thisOutpoint = Util.outpoint(this.txPreimage);
     require(thisOutpoint != this.sideTxUtxoMsg[ : 36]);
 
     // each outpoint: 32 byte txid + 4 byte index
     int prevOutpointsCount = len(prevouts) / 36;
+    /* 目前Tx最大支持遍历5个input */
     require(prevOutpointsCount <= 5);
 
     bool matchSide = false;
@@ -95,13 +130,13 @@ contract SatoTx {
           sideI = i;
           int scriptCodeLen = len(codePart);
           if (scriptCodeLen > 0) {
-              // 必须是同类合约
+              // 判断是同类合约
               require(len(this.sideTxUtxoMsg) > scriptOffset + scriptCodeLen);
               if (this.sideTxUtxoMsg[scriptOffset : scriptOffset + scriptCodeLen] == codePart) {
                   matchSide = true;
               }
           } else {
-              // 忽视合约类型，只检查是否是当前utxo
+              // 忽视合约类型，只检查是否是当前UTXO
               matchSide = true;
           }
         }
