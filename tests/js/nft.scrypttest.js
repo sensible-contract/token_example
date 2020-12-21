@@ -15,25 +15,25 @@ describe("Test sCrypt contract NFT In Javascript", () => {
 
   /* 02fac240917b1bc22871af783b9a958661bc2b497b27f571a32fe6988e8ad2b38f */
   // const privateKey1 = new bsv.PrivateKey.fromRandom('testnet')
-  const privateKeyIssuer = new bsv.PrivateKey.fromWIF("cPbFsSjFjCbfzTRc8M4nKNGhVJspwnPQAcDhdJgVr3Pdwpqq7LfA");
-  const publicKeyIssuer = bsv.PublicKey.fromPrivateKey(privateKeyIssuer);
-  const publicKeyHashIssuer = bsv.crypto.Hash.sha256ripemd160(publicKeyIssuer.toBuffer());
-  console.log("pkhIssuer:", toHex(publicKeyHashIssuer)); // d3e990e3d6802a033c9b8d3c2ceda56dc0638126
-  console.log(`address: '${privateKeyIssuer.toAddress()}'`);
+  const issuerPrivKey = new bsv.PrivateKey.fromWIF("cPbFsSjFjCbfzTRc8M4nKNGhVJspwnPQAcDhdJgVr3Pdwpqq7LfA");
+  const publicKeyIssuer = bsv.PublicKey.fromPrivateKey(issuerPrivKey);
+  const issuerPkh = bsv.crypto.Hash.sha256ripemd160(publicKeyIssuer.toBuffer());
+  console.log("pkhIssuer:", toHex(issuerPkh)); // d3e990e3d6802a033c9b8d3c2ceda56dc0638126
+  console.log(`address: '${issuerPrivKey.toAddress()}'`);
 
   // const privateKeyReceiver1 = new bsv.PrivateKey.fromRandom("testnet");
-  const privateKeyReceiver1 = new bsv.PrivateKey.fromWIF("cRCsQuoGatjXDdzjYhb1r3RH8LDqCEvjNc8gYS7HcnodPf44guQG");
-  const publicKeyReceiver1 = bsv.PublicKey.fromPrivateKey(privateKeyReceiver1);
-  const publicKeyHashReceiver1 = bsv.crypto.Hash.sha256ripemd160(publicKeyReceiver1.toBuffer());
-  console.log("pkhReceiver1:", toHex(publicKeyHashReceiver1)); // 2edcd18e10de1a646169b19e3c83ec404c8685bd
-  console.log(`address: '${privateKeyReceiver1.toAddress()}'`);
+  const receiver1PrivKey = new bsv.PrivateKey.fromWIF("cRCsQuoGatjXDdzjYhb1r3RH8LDqCEvjNc8gYS7HcnodPf44guQG");
+  const receiver1Pk = bsv.PublicKey.fromPrivateKey(receiver1PrivKey);
+  const receiver1Pkh = bsv.crypto.Hash.sha256ripemd160(receiver1Pk.toBuffer());
+  console.log("pkhReceiver1:", toHex(receiver1Pkh)); // 2edcd18e10de1a646169b19e3c83ec404c8685bd
+  console.log(`address: '${receiver1PrivKey.toAddress()}'`);
 
   // const privateKeyReceiver2 = new bsv.PrivateKey.fromRandom("testnet");
-  const privateKeyReceiver2 = new bsv.PrivateKey.fromWIF("cNLWqaouzifBDZL44C7beiSUWt8k4R6Gj2fnG2tgqdAVSHpYv8He");
-  const publicKeyReceiver2 = bsv.PublicKey.fromPrivateKey(privateKeyReceiver2);
-  const publicKeyHashReceiver2 = bsv.crypto.Hash.sha256ripemd160(publicKeyReceiver2.toBuffer());
-  console.log("pkhReceiver2:", toHex(publicKeyHashReceiver2)); // 36d163b7bb8808077b768091fe93c3be55f44b15
-  console.log(`address: '${privateKeyReceiver2.toAddress()}'`);
+  const receiver2PrivKey = new bsv.PrivateKey.fromWIF("cNLWqaouzifBDZL44C7beiSUWt8k4R6Gj2fnG2tgqdAVSHpYv8He");
+  const receiver2Pk = bsv.PublicKey.fromPrivateKey(receiver2PrivKey);
+  const receiver2Pkh = bsv.crypto.Hash.sha256ripemd160(receiver2Pk.toBuffer());
+  console.log("pkhReceiver2:", toHex(receiver2Pkh)); // 36d163b7bb8808077b768091fe93c3be55f44b15
+  console.log(`address: '${receiver2PrivKey.toAddress()}'`);
 
   const Signature = bsv.crypto.Signature;
   // Note: ANYONECANPAY
@@ -67,22 +67,16 @@ describe("Test sCrypt contract NFT In Javascript", () => {
     makeTxP2pk = () => {
       let txnew = new bsv.Transaction();
       txnew.addInput(
-        new bsv.Transaction.Input({
-          prevTxId: dummyTxId,
-          outputIndex: 0,
-          script: "",
-        }),
+        new bsv.Transaction.Input({ prevTxId: dummyTxId, outputIndex: 0, script: "" }),
         bsv.Script.fromASM("OP_DUP OP_HASH160 05a24d44e37cae0f4e231514c3ad512d313b1416 OP_EQUALVERIFY OP_CHECKSIG"),
         100001000
       );
-
       txnew.addOutput(
         new bsv.Transaction.Output({
           script: bsv.Script.fromASM("OP_DUP OP_HASH160 05a24d44e37cae0f4e231514c3ad512d313b1416 OP_EQUALVERIFY OP_CHECKSIG"),
           satoshis: 100000000,
         })
       );
-
       return txnew;
     };
 
@@ -90,170 +84,76 @@ describe("Test sCrypt contract NFT In Javascript", () => {
     makeTxGenesis = (prevTxId, pkhTheIssuer, lastTokenId) => {
       let txnew = new bsv.Transaction();
       txnew.addInput(
-        new bsv.Transaction.Input({
-          prevTxId: prevTxId,
-          outputIndex: 0,
-          script: "",
-        }),
+        new bsv.Transaction.Input({ prevTxId: prevTxId, outputIndex: 0, script: "" }),
         bsv.Script.fromASM("OP_DUP OP_HASH160 05a24d44e37cae0f4e231514c3ad512d313b1416 OP_EQUALVERIFY OP_CHECKSIG"),
         100001000
       );
-
       // genesisLockingScript
       const newLockingScript = [lockingScriptCodePart, genesisOutpointWithOutputIdx, toHex(pkhTheIssuer) + num2bin(lastTokenId, DataLen8) + dataTypeIssue].join(" ");
-
-      txnew.addOutput(
-        new bsv.Transaction.Output({
-          script: bsv.Script.fromASM(newLockingScript),
-          satoshis: 100000000,
-        })
-      );
-
+      txnew.addOutput(new bsv.Transaction.Output({ script: bsv.Script.fromASM(newLockingScript), satoshis: 100000000 }));
       return txnew;
     };
 
     // make tx issue
     makeTxIssue = (prevIssueTxId, pkhNewReceiver, pkhTheIssuer, pkChange, lastTokenId, nextTokenId) => {
       let txnew = new bsv.Transaction();
-
+      // input 0
       // genesisLockingScript
       const newLockingScript = [lockingScriptCodePart, genesisOutpointWithOutputIdx, toHex(pkhTheIssuer) + num2bin(lastTokenId, DataLen8) + dataTypeIssue].join(" ");
-
-      // input 0
-      txnew.addInput(
-        new bsv.Transaction.Input({
-          prevTxId: prevIssueTxId,
-          outputIndex: 0,
-          script: "",
-        }),
-        bsv.Script.fromASM(newLockingScript),
-        100000000
-      );
-
+      txnew.addInput(new bsv.Transaction.Input({ prevTxId: prevIssueTxId, outputIndex: 0, script: "" }), bsv.Script.fromASM(newLockingScript), 100000000);
       // input 1
       txnew.addInput(
-        new bsv.Transaction.Input({
-          prevTxId: "ecf64be3b407af50add3ace3438458347b0c93e06ca26262f83f7a24c77baf68",
-          outputIndex: 0,
-          script: "",
-        }),
+        new bsv.Transaction.Input({ prevTxId: "ecf64be3b407af50add3ace3438458347b0c93e06ca26262f83f7a24c77baf68", outputIndex: 0, script: "" }),
         bsv.Script.fromASM("OP_DUP OP_HASH160 05a24d44e37cae0f4e231514c3ad512d313b1416 OP_EQUALVERIFY OP_CHECKSIG"),
         100001000
       );
-
       // output 0
       const newLockingScript0 = [lockingScriptCodePart, genesisOutpointWithOutputIdx, toHex(pkhTheIssuer) + num2bin(nextTokenId, DataLen8) + dataTypeIssue].join(" ");
-      txnew.addOutput(
-        new bsv.Transaction.Output({
-          script: bsv.Script.fromASM(newLockingScript0),
-          satoshis: 100000000,
-        })
-      );
-
+      txnew.addOutput(new bsv.Transaction.Output({ script: bsv.Script.fromASM(newLockingScript0), satoshis: 100000000 }));
       // output 1
       const newLockingScript1 = [lockingScriptCodePart, genesisOutpointWithOutputIdx, toHex(pkhNewReceiver) + num2bin(nextTokenId, DataLen8) + dataTypeTransfer].join(" ");
-      txnew.addOutput(
-        new bsv.Transaction.Output({
-          script: bsv.Script.fromASM(newLockingScript1),
-          satoshis: 50000000,
-        })
-      );
-
+      txnew.addOutput(new bsv.Transaction.Output({ script: bsv.Script.fromASM(newLockingScript1), satoshis: 50000000 }));
       // output 2
-      txnew.addOutput(
-        new bsv.Transaction.Output({
-          script: bsv.Script.buildPublicKeyHashOut(pkChange),
-          satoshis: 50000000,
-        })
-      );
+      txnew.addOutput(new bsv.Transaction.Output({ script: bsv.Script.buildPublicKeyHashOut(pkChange), satoshis: 50000000 }));
       return txnew;
     };
 
     // make tx transfer
     makeTxTransfer = (prevTransferTxId, pkhOwner, pkhNewReceiver, pkChange, lastTokenId, transferTokenId) => {
       let txnew = new bsv.Transaction();
-
       // input 0
       // prev output 1
       const prevTransferLockingScript1 = [lockingScriptCodePart, genesisOutpointWithOutputIdx, toHex(pkhOwner) + num2bin(lastTokenId, DataLen8) + dataTypeTransfer].join(" ");
-
-      txnew.addInput(
-        new bsv.Transaction.Input({
-          prevTxId: prevTransferTxId,
-          outputIndex: 1,
-          script: "",
-        }),
-        bsv.Script.fromASM(prevTransferLockingScript1),
-        50000000
-      );
-
+      txnew.addInput(new bsv.Transaction.Input({ prevTxId: prevTransferTxId, outputIndex: 1, script: "" }), bsv.Script.fromASM(prevTransferLockingScript1), 50000000);
       // input 1
       txnew.addInput(
-        new bsv.Transaction.Input({
-          prevTxId: "ecf64be3b407af50add3ace3438458347b0c93e06ca26262f83f7a24c77baf68",
-          outputIndex: 0,
-          script: "",
-        }),
+        new bsv.Transaction.Input({ prevTxId: "ecf64be3b407af50add3ace3438458347b0c93e06ca26262f83f7a24c77baf68", outputIndex: 0, script: "" }),
         bsv.Script.fromASM("OP_DUP OP_HASH160 05a24d44e37cae0f4e231514c3ad512d313b1416 OP_EQUALVERIFY OP_CHECKSIG"),
         50001000
       );
-
       // output 0
       const newLockingScript0 = [lockingScriptCodePart, genesisOutpointWithOutputIdx, toHex(pkhNewReceiver) + num2bin(transferTokenId, DataLen8) + dataTypeTransfer].join(" ");
-      txnew.addOutput(
-        new bsv.Transaction.Output({
-          script: bsv.Script.fromASM(newLockingScript0),
-          satoshis: 50000000,
-        })
-      );
-
+      txnew.addOutput(new bsv.Transaction.Output({ script: bsv.Script.fromASM(newLockingScript0), satoshis: 50000000 }));
       // output 1
-      txnew.addOutput(
-        new bsv.Transaction.Output({
-          script: bsv.Script.buildPublicKeyHashOut(pkChange),
-          satoshis: 50000000,
-        })
-      );
-
+      txnew.addOutput(new bsv.Transaction.Output({ script: bsv.Script.buildPublicKeyHashOut(pkChange), satoshis: 50000000 }));
       return txnew;
     };
 
     // make tx transfer burn
     makeTxTransferBurn = (prevTransferTxId, pkhOwner, pkChange, lastTokenId) => {
       let txnew = new bsv.Transaction();
-
       // input 0
       // prev output 1
       const prevTransferLockingScript1 = [lockingScriptCodePart, genesisOutpointWithOutputIdx, toHex(pkhOwner) + num2bin(lastTokenId, DataLen8) + dataTypeTransfer].join(" ");
-
-      txnew.addInput(
-        new bsv.Transaction.Input({
-          prevTxId: prevTransferTxId,
-          outputIndex: 1,
-          script: "",
-        }),
-        bsv.Script.fromASM(prevTransferLockingScript1),
-        50000000
-      );
-
+      txnew.addInput(new bsv.Transaction.Input({ prevTxId: prevTransferTxId, outputIndex: 1, script: "" }), bsv.Script.fromASM(prevTransferLockingScript1), 50000000);
       // input 1
       txnew.addInput(
-        new bsv.Transaction.Input({
-          prevTxId: "ecf64be3b407af50add3ace3438458347b0c93e06ca26262f83f7a24c77baf68",
-          outputIndex: 0,
-          script: "",
-        }),
+        new bsv.Transaction.Input({ prevTxId: "ecf64be3b407af50add3ace3438458347b0c93e06ca26262f83f7a24c77baf68", outputIndex: 0, script: "" }),
         bsv.Script.fromASM("OP_DUP OP_HASH160 05a24d44e37cae0f4e231514c3ad512d313b1416 OP_EQUALVERIFY OP_CHECKSIG"),
         1000
       );
-
       // output 0
-      txnew.addOutput(
-        new bsv.Transaction.Output({
-          script: bsv.Script.buildPublicKeyHashOut(pkChange),
-          satoshis: 50000000,
-        })
-      );
+      txnew.addOutput(new bsv.Transaction.Output({ script: bsv.Script.buildPublicKeyHashOut(pkChange), satoshis: 50000000 }));
 
       return txnew;
     };
@@ -303,34 +203,34 @@ describe("Test sCrypt contract NFT In Javascript", () => {
         new Bytes(preTxOutpointPadding),
         new Sig(toHex(sig)),
         new PubKey(toHex(publicKeyIssuer)),
-        new Ripemd160(toHex(publicKeyHashReceiver1)),
+        new Ripemd160(toHex(receiver1Pkh)),
         50000000,
         new Ripemd160(toHex(pkhNewIssuer)),
         50000000
       );
     };
 
-    let verifyData = await testIssue(privateKeyIssuer, publicKeyHashIssuer, publicKeyHashReceiver1, publicKeyHashIssuer, currTokenId + 1, true);
+    let verifyData = await testIssue(issuerPrivKey, issuerPkh, receiver1Pkh, issuerPkh, currTokenId + 1, true);
     let result = verifyData.verify();
     expect(result.success, result.error).to.be.true;
 
     // copy utxo must fail
-    verifyData = await testIssue(privateKeyIssuer, publicKeyHashIssuer, publicKeyHashReceiver1, publicKeyHashIssuer, currTokenId + 1, false);
+    verifyData = await testIssue(issuerPrivKey, issuerPkh, receiver1Pkh, issuerPkh, currTokenId + 1, false);
     result = verifyData.verify();
     expect(result.success, result.error).to.be.false;
 
     // issuer must not change
-    verifyData = await testIssue(privateKeyIssuer, publicKeyHashIssuer, publicKeyHashReceiver1, publicKeyHashReceiver1, currTokenId + 1, true);
+    verifyData = await testIssue(issuerPrivKey, issuerPkh, receiver1Pkh, receiver1Pkh, currTokenId + 1, true);
     result = verifyData.verify();
     expect(result.success, result.error).to.be.false;
 
     // unauthorized key
-    verifyData = await testIssue(privateKeyReceiver1, publicKeyHashIssuer, publicKeyHashReceiver1, publicKeyHashIssuer, currTokenId + 1, true);
+    verifyData = await testIssue(receiver1PrivKey, issuerPkh, receiver1Pkh, issuerPkh, currTokenId + 1, true);
     result = verifyData.verify();
     expect(result.success, result.error).to.be.false;
 
     // mismatched next token ID
-    verifyData = await testIssue(privateKeyIssuer, publicKeyHashIssuer, publicKeyHashReceiver1, publicKeyHashIssuer, currTokenId + 2, true);
+    verifyData = await testIssue(issuerPrivKey, issuerPkh, receiver1Pkh, issuerPkh, currTokenId + 2, true);
     result = verifyData.verify();
     expect(result.success, result.error).to.be.false;
   });
@@ -380,44 +280,17 @@ describe("Test sCrypt contract NFT In Javascript", () => {
       );
     };
 
-    let verifyData = await testTransfer(
-      privateKeyIssuer,
-      privateKeyReceiver1,
-      publicKeyHashIssuer,
-      publicKeyHashIssuer,
-      publicKeyHashReceiver1,
-      publicKeyHashIssuer,
-      publicKeyReceiver1,
-      currTokenId + 1
-    );
+    let verifyData = await testTransfer(issuerPrivKey, receiver1PrivKey, issuerPkh, issuerPkh, receiver1Pkh, issuerPkh, receiver1Pk, currTokenId + 1);
     let result = verifyData.verify();
     expect(result.success, result.error).to.be.true;
 
     // unauthorized key
-    verifyData = await testTransfer(
-      privateKeyIssuer,
-      privateKeyIssuer,
-      publicKeyHashIssuer,
-      publicKeyHashIssuer,
-      publicKeyHashReceiver1,
-      publicKeyHashIssuer,
-      publicKeyReceiver1,
-      currTokenId + 1
-    );
+    verifyData = await testTransfer(issuerPrivKey, issuerPrivKey, issuerPkh, issuerPkh, receiver1Pkh, issuerPkh, receiver1Pk, currTokenId + 1);
     result = verifyData.verify();
     expect(result.success, result.error).to.be.false;
 
     // token ID must not change
-    verifyData = await testTransfer(
-      privateKeyIssuer,
-      privateKeyReceiver1,
-      publicKeyHashIssuer,
-      publicKeyHashIssuer,
-      publicKeyHashReceiver1,
-      publicKeyHashIssuer,
-      publicKeyReceiver1,
-      currTokenId + 2
-    );
+    verifyData = await testTransfer(issuerPrivKey, receiver1PrivKey, issuerPkh, issuerPkh, receiver1Pkh, issuerPkh, receiver1Pk, currTokenId + 2);
     result = verifyData.verify();
     expect(result.success, result.error).to.be.false;
   });
@@ -453,7 +326,7 @@ describe("Test sCrypt contract NFT In Javascript", () => {
       return token.burn(new SigHashPreimage(toHex(preimage)), new Sig(toHex(sig)), new PubKey(toHex(pkOwner)), new Ripemd160(toHex(pkhOwner)), 50000000);
     };
 
-    let verifyData = await testBurn(privateKeyReceiver1, publicKeyHashIssuer, publicKeyHashIssuer, publicKeyHashReceiver1, publicKeyReceiver1, currTokenId + 1);
+    let verifyData = await testBurn(receiver1PrivKey, issuerPkh, issuerPkh, receiver1Pkh, receiver1Pk, currTokenId + 1);
     let result = verifyData.verify();
     expect(result.success, result.error).to.be.true;
   });
