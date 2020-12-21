@@ -11,18 +11,18 @@ import "payload_nft.scrypt";
 * 协议支持Token转账、不同token之间兑换、和另一种NFT兑换、和bsv兑换等功能。
 *
 * 当前合约支持函数如下:
-*  mint: 发行新的token
-*  split: 将token余额一分为二
-*  merge: 将两个token余额合二为一
-*  makeSwap: 发起不同token之间的兑换
-*  cancelSwap：取消token兑换
-*  finishSwap：完成token兑换，发起方合约执行
-*  takeSwap：完成token兑换，参与方合约执行
-*  takeSwapNFT：完成token到nft的兑换，参与方合约执行
-*  sell：发起token到bsv的兑换
-*  cancelSell：取消token到bsv的兑换
-*  buy：完成bsv到token的兑换，参与方合约执行
-*  burn：销毁token
+*    mint: 发行新的token
+*    split: 将token余额一分为二
+*    merge: 将两个token余额合二为一
+*    makeSwap: 发起不同token之间的兑换
+*    cancelSwap：取消token兑换
+*    finishSwap：完成token兑换，发起方合约执行
+*    takeSwap：完成token兑换，参与方合约执行
+*    takeSwapNFT：完成token到nft的兑换，参与方合约执行
+*    sell：发起token到bsv的兑换
+*    cancelSell：取消token到bsv的兑换
+*    buy：完成bsv到token的兑换，参与方合约执行
+*    burn：销毁token
 *
 * 各个函数详细处理逻辑见各自文档。
 * 暂约定合约的函数花费utxo和产生utxo时，用箭头符号(->)来区分Tx内的input和output，(->)上为input花费的UTXO数据，下为output产生的UTXO数据。
@@ -32,7 +32,6 @@ import "payload_nft.scrypt";
 contract Token {
   int rabinPubKey;
 
-  //////////////// mint
   /*
   * mint:
   *   codePart, GenesisPart, blockHeader0, blockHeight, MINT
@@ -94,7 +93,6 @@ contract Token {
     require(hashOutputs == Util.hashOutputs(txPreimage));
   }
 
-  //////////////// split
   /*
   * split:
   *   codePart, GenesisPart, ownerPkh, tokenAmount, TRANSFER
@@ -153,7 +151,6 @@ contract Token {
     require(hashOutputs == Util.hashOutputs(txPreimage));
   }
 
-  //////////////// merge
   /*
   * merge:
   *   codePart, GenesisPart, ownerPkhA, tokenAmount0, TRANSFER
@@ -209,8 +206,7 @@ contract Token {
     require(hashOutputs == Util.hashOutputs(txPreimage));
   }
 
-  //////////////// A make swap
-  /*
+  /* user A make swap
   * makeSwap:
   *   codePart, GenesisPartA, ownerPkhA, tokenAmountA, TRANSFER
   *    ->
@@ -261,8 +257,7 @@ contract Token {
     require(hashOutputs == Util.hashOutputs(txPreimage));
   }
 
-  //////////////// A cancel swap
-  /*
+  /* user A cancel swap
   * cancelSwap:
   *   codePart, GenesisPartA, ownerPkhA, tokenAmountA, GenesisPartB, tokenAmountB, SWAP
   *    ->
@@ -306,9 +301,9 @@ contract Token {
     require(hashOutputs == Util.hashOutputs(txPreimage));
   }
 
-  //////////////// A finish swap
-  /*
+  /* user A finish swap
   * finishSwap（能否部分成交？）:
+  * 此Tx涉及同一合约多次执行，且执行了不同的解锁函数，相互配合。
   *   (finishSwap) codePart, GenesisPartA, ownerPkhA, tokenAmountA, GenesisPartB, tokenAmountB, SWAP
   *   (takeSwap)   codePart, GenesisPartB, ownerPkhB, tokenAmountB, TRANSFER
   *    ->
@@ -369,9 +364,9 @@ contract Token {
     require(hashOutputs == Util.hashOutputs(txPreimage));
   }
 
-  //////////////// B take swap
-  /*
+  /* user B take swap
   * takeSwap（能否部分成交？）:
+  * 此Tx涉及同一合约多次执行，且执行了不同的解锁函数，相互配合。
   *   (finishSwap) codePart, GenesisPartA, ownerPkhA, tokenAmountA, GenesisPartB, tokenAmountB, SWAP
   *   (takeSwap)   codePart, GenesisPartB, ownerPkhB, tokenAmountB, TRANSFER
   *    ->
@@ -433,12 +428,12 @@ contract Token {
     require(hashOutputs == Util.hashOutputs(txPreimage));
   }
 
-  //////////////// B take swap NFT
-  /*
+  /* user B take swap NFT
   *（Token不检查NFT合约类型codePartNFT，允许和任意符合数据格式的NFT合约兑换）
+  * 此Tx涉及2种不同合约的执行，其中各合约执行各自的解锁函数，相互配合。
   * takeSwapNFT:
-  *   (NFT.finishSwapToken) codePartNFT, GenesisPartA, ownerPkhA, tokenId, hash256(codePartTkn + GenesisPartB), tokenAmountB, SWAP
-  *   (Tkn.takeSwapNFT)     codePartTkn, GenesisPartB, ownerPkhB, tokenAmountB, TRANSFER
+  *   (nft.finishSwapToken) codePartNFT, GenesisPartA, ownerPkhA, tokenId, hash256(codePartTkn + GenesisPartB), tokenAmountB, SWAP
+  *   (tkn.takeSwapNFT)     codePartTkn, GenesisPartB, ownerPkhB, tokenAmountB, TRANSFER
   *    ->
   *   codePartNFT, GenesisPartA, ownerPkhB, tokenId, TRANSFER
   *   codePartTkn, GenesisPartB, ownerPkhA, tokenAmountB, TRANSFER
@@ -498,8 +493,7 @@ contract Token {
     require(hashOutputs == Util.hashOutputs(txPreimage));
   }
 
-  //////////////// A sell
-  /*
+  /* user A sell
   * sell:
   *   codePart, GenesisPart, ownerPkhA, tokenAmount, TRANSFER
   *    ->
@@ -547,8 +541,7 @@ contract Token {
     require(hashOutputs == Util.hashOutputs(txPreimage));
   }
 
-  //////////////// A cancel sell
-  /*
+  /* user A cancel sell
   * cancelSell:
   *   codePart, GenesisPart, ownerPkhA, tokenAmount, satoshiAmount, SELL
   *    ->
@@ -592,8 +585,7 @@ contract Token {
     require(hashOutputs == Util.hashOutputs(txPreimage));
   }
 
-  //////////////// B buy
-  /*
+  /* user B buy
   * buy（能否部分成交？）:
   *   codePart, GenesisPart, ownerPkhA, tokenAmount, satoshiAmount, SELL
   *   ownerPkhB, satoshiAmount
@@ -641,9 +633,8 @@ contract Token {
     require(hashOutputs == Util.hashOutputs(txPreimage));
   }
 
-  //////////////// burn a token back to normal bitcoins
-  /*
-  * burn 函数用于销毁用户的token，输入为1个TRANSFER，输出为1个找零
+  /* burn a token back to normal bitcoins
+  * burn 函数用于用户自行销毁token，输入为1个TRANSFER，输出为1个找零
   */
   public function burn(SigHashPreimage txPreimage,
     Sig senderSig, PubKey sender,

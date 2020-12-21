@@ -20,10 +20,13 @@ import "util.scrypt";
 contract SatoTx {
   int rabinPubKey;
   SigHashPreimage txPreimage;
+
+  /* 溯源消息 */
   int preTxOutpointSig;
   bytes preTxOutpointMsg;
   bytes preTxOutpointPadding;
 
+  /* side消息 */
   int sideTxUtxoSig;
   bytes sideTxUtxoMsg;
   bytes sideTxUtxoPadding;
