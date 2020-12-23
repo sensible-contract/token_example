@@ -49,7 +49,7 @@ contract SatoTx {
     RabinSignature rb = new RabinSignature();
     require(rb.verifySig(this.preTxOutpointSig, this.preTxOutpointMsg, this.preTxOutpointPadding, this.rabinPubKey));
 
-    // 通过前一个UTXO溯源的spendByTxId, 必须确保spendByTxId接下来又是被本合约花费
+    // 判断溯源信息中的spendByTxId, 必须是当前被花费的UTXO的TxId
     bytes thisOutpoint = Util.outpoint(this.txPreimage);
     require(thisOutpoint[ : 32] == this.preTxOutpointMsg[ : 32]);
 
@@ -73,7 +73,7 @@ contract SatoTx {
     } else {
         /* 如果前一个Tx花费的某UTXO的锁定脚本能匹配传入的codeWithGenesisPart，则满足溯源
          *
-         *  传入的codeWithGenesisPart一定是从本Tx花费的UTXO的锁定脚本中来。
+         * 传入的codeWithGenesisPart一定是从本Tx花费的UTXO的锁定脚本中来。
         */
       int scriptCodeLen = len(codeWithGenesisPart);
       require(len(this.preTxOutpointMsg) > scriptOffset + scriptCodeLen);
