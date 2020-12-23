@@ -1,5 +1,5 @@
 const { bsv, buildContractClass, signTx, toHex, getPreimage, num2bin, Ripemd160, PubKey, SigHashPreimage, Sig, Bytes } = require("scryptlib");
-const { inputIndex, compileContract, DataLen, dummyTxId, satoTxSigUTXOSpendBy, satoTxSigUTXO, reverseEndian } = require("../helper");
+const { inputIndex, compileContract, DataLen, DataLen4, DataLen8, dummyTxId, satoTxSigUTXOSpendBy, satoTxSigUTXO, reverseEndian, makeTx } = require("../helper");
 
 // const { privateKey } = require("../privateKey");
 const dummyPrivKey = new bsv.PrivateKey.fromWIF("cPbFsSjFjCbfzTRc8M4nKNGhVJspwnPQAcDhdJgVr3Pdwpqq7LfA");
@@ -14,9 +14,6 @@ const Signature = bsv.crypto.Signature;
 // Note: ANYONECANPAY
 const sighashType = Signature.SIGHASH_ANYONECANPAY | Signature.SIGHASH_ALL | Signature.SIGHASH_FORKID;
 
-const DataLen8 = 8;
-const DataLen4 = 4;
-
 const ISSUE = "00";
 const TRANSFER = "01";
 const SWAP = "02";
@@ -24,45 +21,34 @@ const SELL = "03";
 
 const TokenContractClass = buildContractClass(compileContract("nft.scrypt"));
 
-/**
- * Create new Tx by inputs and outputs
- *
- * {
- *   inputs: {
- *     txid: "xx",
- *     vout: 0,
- *     satoshis: 32,
- *     script: "xx"
- *   },
- *   outputs: {
- *     satoshis: 32,
- *     script: "xx"
- *     to: "xx"
- *   }
- * }
- */
-function makeTx({ inputs, outputs } = {}) {
-  let txnew = new bsv.Transaction();
-  inputs.forEach((input) => {
-    var script;
-    if (input.to) {
-      script = bsv.Script.buildPublicKeyHashOut(input.to);
-    } else if (input.script) {
-      script = bsv.Script.fromASM(input.script);
-    }
-    txnew.addInput(new bsv.Transaction.Input({ prevTxId: input.txid, outputIndex: input.vout, script: "" }), script, input.satoshis);
-  });
+class PayloadNFT {
+  constructor({ scriptCode, dataType, ownerPkh, tokenId, codeWithGenesisPartHashSwap, amountSwap, satoshiAmountSell } = {}) {
+    /* 数据类型，1字节 */
+    this.dataType = dataType;
 
-  outputs.forEach((output) => {
-    var script;
-    if (output.to) {
-      script = bsv.Script.buildPublicKeyHashOut(output.to);
-    } else if (output.script) {
-      script = bsv.Script.fromASM(output.script);
+    /* 数据 */
+    this.ownerPkh = ownerPkh; // Ripemd160
+    this.tokenId = tokenId;
+
+    /* swap 数据 */
+    this.codeWithGenesisPartHashSwap = codeWithGenesisPartHashSwap; // Sha256
+    this.amountSwap = amountSwap;
+
+    /* sell 数据 */
+    this.satoshiAmountSell = satoshiAmountSell; // int
+  }
+
+  dump() {
+    let payload = "";
+    if (this.dataType == SWAP) {
+      payload = toHex(this.ownerPkh) + num2bin(this.tokenId, DataLen8) + this.codeWithGenesisPartHashSwap + num2bin(this.amountSwap, DataLen8) + this.dataType;
+    } else if (this.dataType == SELL) {
+      payload = toHex(this.ownerPkh) + num2bin(this.tokenId, DataLen8) + num2bin(this.satoshiAmountSell, DataLen8) + this.dataType;
+    } else {
+      payload = toHex(this.ownerPkh) + num2bin(this.tokenId, DataLen8) + this.dataType;
     }
-    txnew.addOutput(new bsv.Transaction.Output({ script: script, satoshis: output.satoshis }));
-  });
-  return txnew;
+    return payload;
+  }
 }
 
 class NFT {
@@ -71,7 +57,7 @@ class NFT {
     this.codePart = this.token.codePart.toASM();
   }
 
-  // start
+  // prevTx of GenesisTx
   makeTxP2pk({ inputSatoshis, outputSatoshis } = {}) {
     let txnew = makeTx({
       inputs: [
@@ -92,10 +78,12 @@ class NFT {
     return txnew;
   }
 
-  // Genesis
+  // GenesisTx
   makeTxGenesis({ prevTxId, outputIndex, thisIssuerPkh, lastTokenId, inputSatoshis, genesisSatoshis } = {}) {
     this.genesisPart = reverseEndian(prevTxId) + num2bin(outputIndex, DataLen4) + num2bin(0, DataLen4);
-    const newLockingScript = [this.codePart, this.genesisPart, toHex(thisIssuerPkh) + num2bin(lastTokenId, DataLen8) + ISSUE].join(" ");
+
+    let pl = new PayloadNFT({ dataType: ISSUE, ownerPkh: thisIssuerPkh, tokenId: lastTokenId });
+    const newLockingScript = [this.codePart, this.genesisPart, pl.dump()].join(" ");
 
     let txnew = makeTx({
       inputs: [
@@ -118,9 +106,15 @@ class NFT {
 
   // make tx issue
   makeTxIssue({ prevTxId, outputIndex, thisOwnerPkh, thisIssuerPkh, thisChangePk, lastTokenId, nextTokenId } = {}) {
-    const utxoLockingScript = [this.codePart, this.genesisPart, toHex(thisIssuerPkh) + num2bin(lastTokenId, DataLen8) + ISSUE].join(" ");
-    const newLockingScript0 = [this.codePart, this.genesisPart, toHex(thisIssuerPkh) + num2bin(nextTokenId, DataLen8) + ISSUE].join(" ");
-    const newLockingScript1 = [this.codePart, this.genesisPart, toHex(thisOwnerPkh) + num2bin(nextTokenId, DataLen8) + TRANSFER].join(" ");
+    let pl = new PayloadNFT({ dataType: ISSUE, ownerPkh: thisIssuerPkh, tokenId: lastTokenId });
+    const utxoLockingScript = [this.codePart, this.genesisPart, pl.dump()].join(" ");
+
+    pl.tokenId = nextTokenId
+    const newLockingScript0 = [this.codePart, this.genesisPart, pl.dump()].join(" ");
+
+    pl.dataType = TRANSFER
+    pl.ownerPkh = thisOwnerPkh
+    const newLockingScript1 = [this.codePart, this.genesisPart, pl.dump()].join(" ");
 
     let txnew = makeTx({
       inputs: [
@@ -157,8 +151,11 @@ class NFT {
 
   // make tx transfer
   makeTxTransfer({ prevTxId, outputIndex, lastOwnerPkh, thisOwnerPkh, thisChangePk, lastTokenId, transferTokenId } = {}) {
-    const utxoLockingScript = [this.codePart, this.genesisPart, toHex(lastOwnerPkh) + num2bin(lastTokenId, DataLen8) + TRANSFER].join(" ");
-    const newLockingScript0 = [this.codePart, this.genesisPart, toHex(thisOwnerPkh) + num2bin(transferTokenId, DataLen8) + TRANSFER].join(" ");
+    let pl = new PayloadNFT({ dataType: TRANSFER, ownerPkh: lastOwnerPkh, tokenId: lastTokenId });
+    const utxoLockingScript = [this.codePart, this.genesisPart, pl.dump()].join(" ");
+    pl.ownerPkh = thisOwnerPkh
+    pl.tokenId = transferTokenId
+    const newLockingScript0 = [this.codePart, this.genesisPart, pl.dump()].join(" ");
     let txnew = makeTx({
       inputs: [
         {
@@ -190,7 +187,8 @@ class NFT {
 
   // make tx transfer burn
   makeTxTransferBurn({ prevTxId, outputIndex, lastOwnerPkh, thisChangePk, lastTokenId }) {
-    const utxoLockingScript = [this.codePart, this.genesisPart, toHex(lastOwnerPkh) + num2bin(lastTokenId, DataLen8) + TRANSFER].join(" ");
+    let pl = new PayloadNFT({ dataType: TRANSFER, ownerPkh: lastOwnerPkh, tokenId: lastTokenId });
+    const utxoLockingScript = [this.codePart, this.genesisPart, pl.dump()].join(" ");
     let txnew = makeTx({
       inputs: [
         {
@@ -231,7 +229,8 @@ class NFT {
     currTokenId,
   } = {}) {
     // 设置校验环境
-    this.token.setDataPart(this.genesisPart + " " + toHex(pkhGenesisIssuer) + num2bin(currTokenId, DataLen8) + ISSUE);
+    let pl = new PayloadNFT({ dataType: ISSUE, ownerPkh: pkhGenesisIssuer, tokenId: currTokenId });
+    this.token.setDataPart(this.genesisPart + " " + pl.dump());
     this.token.txContext = { tx: txIssue, inputIndex, inputSatoshis: 100000000 };
 
     // 计算preimage
@@ -262,7 +261,8 @@ class NFT {
 
   // unlockTxTransfer
   async unlockTxTransfer({ txGenesis, txIssue, txTransfer, newGenisisOutpointTxId, newGenesisPreTxHex, privKeyTransfer, pkhOwner1, pkhOwner2, pkOwner1, currTokenId } = {}) {
-    this.token.setDataPart(this.genesisPart + " " + toHex(pkhOwner1) + num2bin(currTokenId + 1, DataLen8) + TRANSFER);
+    let pl = new PayloadNFT({ dataType: TRANSFER, ownerPkh: pkhOwner1, tokenId: currTokenId + 1 });
+    this.token.setDataPart(this.genesisPart + " " + pl.dump());
     this.token.txContext = { tx: txTransfer, inputIndex, inputSatoshis: 50000000 };
 
     // 计算preimage
@@ -293,7 +293,8 @@ class NFT {
 
   //
   async unlockTxTransferBurn({ txTransferBurn, privKeyTransfer, pkhOwner, pkOwner, transferTokenId } = {}) {
-    this.token.setDataPart(this.genesisPart + " " + toHex(pkhOwner) + num2bin(transferTokenId, DataLen8) + TRANSFER);
+    let pl = new PayloadNFT({ dataType: TRANSFER, ownerPkh: pkhOwner, tokenId: transferTokenId });
+    this.token.setDataPart(this.genesisPart + " " + pl.dump());
     this.token.txContext = { tx: txTransferBurn, inputIndex, inputSatoshis: 50000000 };
 
     // 计算preimage

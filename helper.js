@@ -18,6 +18,8 @@ const Interpreter = bsv.Script.Interpreter
 
 // number of bytes to denote some numeric value
 const DataLen = 1
+const DataLen4 = 4;
+const DataLen8 = 8;
 
 const axios = require('axios')
 const API_PREFIX = 'https://api.whatsonchain.com/v1/bsv/test'
@@ -32,6 +34,7 @@ const dummyTxId = 'a477af6b2667c29670467e4e0728b685ee07b240235771862318e29ddbe58
 const reversedDummyTxId = '5884e5db9de218238671572340b207ee85b628074e7e467096c267266baf77a4'
 const sighashType2Hex = s => s.toString(16)
 
+
 function newTx() {
   const utxo = {
     txId: 'a477af6b2667c29670467e4e0728b685ee07b240235771862318e29ddbe58458',
@@ -42,13 +45,52 @@ function newTx() {
   return new bsv.Transaction().from(utxo);
 }
 
-
-
 // reverse hexStr byte order
 function reverseEndian(hexStr) {
   let num = new BN(hexStr, 'hex')
   let buf = num.toBuffer()
   return buf.toString('hex').match(/.{2}/g).reverse().join('')
+}
+
+/**
+ * Create new Tx by inputs and outputs
+ *
+ * {
+ *   inputs: {
+ *     txid: "xx",
+ *     vout: 0,
+ *     satoshis: 32,
+ *     script: "xx"
+ *   },
+ *   outputs: {
+ *     satoshis: 32,
+ *     script: "xx"
+ *     to: "xx"
+ *   }
+ * }
+ */
+function makeTx({ inputs, outputs } = {}) {
+  let txnew = new bsv.Transaction();
+  inputs.forEach((input) => {
+    var script;
+    if (input.to) {
+      script = bsv.Script.buildPublicKeyHashOut(input.to);
+    } else if (input.script) {
+      script = bsv.Script.fromASM(input.script);
+    }
+    txnew.addInput(new bsv.Transaction.Input({ prevTxId: input.txid, outputIndex: input.vout, script: "" }), script, input.satoshis);
+  });
+
+  outputs.forEach((output) => {
+    var script;
+    if (output.to) {
+      script = bsv.Script.buildPublicKeyHashOut(output.to);
+    } else if (output.script) {
+      script = bsv.Script.fromASM(output.script);
+    }
+    txnew.addOutput(new bsv.Transaction.Output({ script: script, satoshis: output.satoshis }));
+  });
+  return txnew;
 }
 
 async function createPayByOthersTx(address) {
@@ -202,22 +244,25 @@ function showError(error) {
 };
 
 module.exports = {
-  inputIndex,
-  inputSatoshis,
-  newTx,
-  createPayByOthersTx,
+  compileContract,
   createLockingTx,
+  createPayByOthersTx,
   createUnlockingTx,
   DataLen,
+  DataLen4,
+  DataLen8,
   dummyTxId,
-  reversedDummyTxId,
-  reverseEndian,
-  unlockP2PKHInput,
-  sendTx,
-  satoTxSigUTXOSpendBy,
-  satoTxSigUTXO,
-  compileContract,
+  inputIndex,
+  inputSatoshis,
   loadDesc,
+  makeTx,
+  newTx,
+  reverseEndian,
+  reversedDummyTxId,
+  satoTxSigUTXO,
+  satoTxSigUTXOSpendBy,
+  sendTx,
+  showError,
   sighashType2Hex,
-  showError
+  unlockP2PKHInput
 }
