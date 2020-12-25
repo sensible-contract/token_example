@@ -1,10 +1,21 @@
 const { bsv, buildContractClass, getPreimage, toHex, num2bin, Ripemd160, SigHashPreimage, signTx, PubKey, Sig, Bytes } = require("scryptlib");
-const { DataLen, loadDesc, createLockingTx, createPayByOthersTx, sendTx, reverseEndian, satoTxSigUTXOSpendBy, unlockP2PKHInput, showError } = require("../helper");
+const {
+  DataLen,
+  DataLen4,
+  DataLen8,
+  loadDesc,
+  createLockingTx,
+  createPayByOthersTx,
+  sendTx,
+  reverseEndian,
+  satoTxSigUTXOSpendBy,
+  unlockP2PKHInput,
+  showError,
+} = require("../helper");
+const { NFT } = require("../../forge/nft");
 const WhatsOnChain = require("whatsonchain");
-// const { privateKey } = require("../privateKey");
 
-const DataLen8 = 8;
-const DataLen4 = 4;
+// const { privateKey } = require("../privateKey");
 
 (async () => {
   const woc = new WhatsOnChain("testnet");
@@ -25,54 +36,44 @@ const DataLen4 = 4;
   const receiver2Pkh = bsv.crypto.Hash.sha256ripemd160(publicKeyReceiver2.toBuffer());
   console.log("pkhReceiver2:", toHex(receiver2Pkh)); // 36d163b7bb8808077b768091fe93c3be55f44b15
 
-  const Signature = bsv.crypto.Signature;
-  const sighashType = Signature.SIGHASH_ANYONECANPAY | Signature.SIGHASH_ALL | Signature.SIGHASH_FORKID;
-
-  const actionIssue = "00";
-  const actionTransfer = "01";
-
-  const genisisOutpointTxId = "0229e3505156e0456747a4dfdd66b48994223e75ed97e746fec84c018d12fcde";
-  const genesisOutpoint = reverseEndian(genisisOutpointTxId) + num2bin(1, DataLen4);
-  const genesisPreTxHex = await woc.getRawTxData(genisisOutpointTxId);
+  const genesisOutpointTxId = "0229e3505156e0456747a4dfdd66b48994223e75ed97e746fec84c018d12fcde";
+  const genesisOutpointIdx = 1;
+  const genesisOutpoint = reverseEndian(genesisOutpointTxId) + num2bin(genesisOutpointIdx, DataLen4);
+  const genesisOutpointValue = 100000;
+  const genesisPreTxHex = await woc.getRawTxData(genesisOutpointTxId);
 
   console.log("genesis Tx outpoint: ", genesisOutpoint);
 
   try {
-    const NonFungibleToken = buildContractClass(loadDesc("nft_desc.json"));
-    const token = new NonFungibleToken(
-      0x3d7b971acdd7bff96ca34857e36685038d9c91e3af693cf9e71d170a8aac885b62dd4746fe7ebd7f3d7d16a51d63aa86a4256bdc853d999193ec3e614d4917e3dde9f6954d1784d5a2580f6fb130442e6a8ad0850aeaa100920fcab9176a05eb1aa3b5ee3e3dc75ae7cde3c25d350bba92956c8bacb0c735d39240c6442bab9dn
-    );
+    const nft = new NFT(true);
 
     // set token id start
     let uniqTokenId = 0;
 
-    // append state as passive data part, initial uniqTokenId
-    token.setDataPart(genesisOutpoint + toHex(issuerPkh) + num2bin(uniqTokenId, DataLen8) + actionIssue);
+    if (true) {
+      let txGenesis = nft.makeTxGenesis({
+        prevTxId: genesisOutpointTxId,
+        outputIndex: genesisOutpointIdx,
+        outputIssuerPkh: issuerPkh,
+        outputTokenId: uniqTokenId,
+        inputSatoshis: genesisOutpointValue,
+      });
 
-    let issueSatoshis = 5000;
-    const FEE = 15000;
-    let transferSatoshis = 5000;
+      console.log("prevtxid:", toHex(txGenesis.inputs[0].prevTxId));
+      console.log("prevtxindex:", txGenesis.inputs[0].outputIndex);
 
-    if (false) {
-      // lock fund to the script & issue the first token
-      const lockingTx = await createLockingTx(privateKey.toAddress(), issueSatoshis, FEE);
+      txGenesis.sign(privateKey);
 
-      console.log("prevtxid:", toHex(lockingTx.inputs[0].prevTxId));
-      console.log("prevtxindex:", lockingTx.inputs[0].outputIndex);
-
-      lockingTx.outputs[0].setScript(token.lockingScript);
-      lockingTx.sign(privateKey);
-      let lockingTxid = await sendTx(lockingTx);
-      // let lockingTxid = lockingTx.id;
-      console.log("funding txid:      ", lockingTxid);
-      console.log("funding txhex:      ", lockingTx.serialize());
-
-      return;
+      let genesisTxid = await sendTx(txGenesis);
+      // let genesisTxid = txGenesis.id;
+      console.log("genesis txid:      ", genesisTxid);
+      console.log("genesis txhex:     ", txGenesis.serialize());
+      // return;
     }
 
     // increment token ID and issue another new token
     /* from genesis issue */
-    let preUtxoTxId = genisisOutpointTxId;
+    let preUtxoTxId = genesisOutpointTxId;
     let preUtxoOutputIndex = 1;
     let preUtxoTxHex = genesisPreTxHex;
 
@@ -84,9 +85,7 @@ const DataLen4 = 4;
     let spendByIssueTxHex = issueTxHex;
 
     /* from next issue */
-
-    let lockingScript0, lockingScript1;
-    if (false) {
+    if (true) {
       preUtxoTxId = issueTxid;
       preUtxoOutputIndex = 0;
       preUtxoTxHex = issueTxHex;
@@ -98,77 +97,37 @@ const DataLen4 = 4;
       spendByIssueTxId = issueTxid;
       spendByIssueTxHex = issueTxHex;
 
-      token.setDataPart(genesisOutpoint + toHex(issuerPkh) + num2bin(uniqTokenId, DataLen8) + actionIssue);
-      const tx = await createPayByOthersTx(privateKey.toAddress());
-      tx.addInput(
-        new bsv.Transaction.Input({
-          prevTxId: issueTxid,
-          outputIndex: 0,
-          script: "",
-        }),
-        token.lockingScript,
-        issueSatoshis
-      );
+      let txIssue = nft.makeTxIssue({
+        prevTxId: issueTxid,
+        outputIndex: 0,
+        inputIssuerPkh: issuerPkh,
+        outputOwnerPkh: receiver1Pkh,
+        thisChangePk: publicKeyIssuer,
+        inputTokenId: uniqTokenId,
+        outputTokenId: uniqTokenId + 1,
+      });
 
-      const curInputIndex = tx.inputs.length - 1;
+      nft.unlockTxIssue({
+        txIssue,
+        preTxId: spendByIssueTxId,
+        preTxHex: spendByIssueTxHex,
+        preUtxoTxId,
+        preUtxoOutputIndex,
+        preUtxoTxHex,
+        privKeyIssuer: privateKeyIssuer,
+        publicKeyIssuer,
+        inputIssuerPkh: issuerPkh,
+        outputReceiverPkh: receiver1Pkh,
+        pkhNewIssuer: issuerPkh,
+        inputTokenId: uniqTokenId,
+      });
 
-      // issue new token
-      lockingScript0 = [token.codePart.toASM(), genesisOutpoint + toHex(issuerPkh) + num2bin(uniqTokenId + 1, DataLen8) + actionIssue].join(" ");
-      tx.addOutput(
-        new bsv.Transaction.Output({
-          script: bsv.Script.fromASM(lockingScript0),
-          satoshis: issueSatoshis,
-        })
-      );
-
-      // transfer previous token to another receiver
-      lockingScript1 = [token.codePart.toASM(), genesisOutpoint + toHex(receiver1Pkh) + num2bin(uniqTokenId + 1, DataLen8) + actionTransfer].join(" ");
-      tx.addOutput(
-        new bsv.Transaction.Output({
-          script: bsv.Script.fromASM(lockingScript1),
-          satoshis: transferSatoshis,
-        })
-      );
-      tx.change(privateKey.toAddress()).fee(FEE);
-
-      const changeAmount = tx.inputAmount - FEE - issueSatoshis - transferSatoshis;
-
-      const preimage = getPreimage(tx, token.lockingScript.toASM(), issueSatoshis, curInputIndex, sighashType);
-      const sig1 = signTx(tx, privateKeyIssuer, token.lockingScript.toASM(), issueSatoshis, curInputIndex, sighashType);
-
-      // 获取Oracle签名
-      let sigInfo = await satoTxSigUTXOSpendBy(preUtxoTxId, preUtxoOutputIndex, spendByIssueTxId, preUtxoTxHex, spendByIssueTxHex);
-      // console.log("satoTxSigUTXOSpendBy:", sigInfo);
-      const preTxOutpointSig = BigInt("0x" + sigInfo.sigBE);
-      const preTxOutpointMsg = sigInfo.payload;
-      const preTxOutpointPadding = sigInfo.padding;
-
-      const unlockingScript = token
-        .issue(
-          new SigHashPreimage(toHex(preimage)),
-          preTxOutpointSig,
-          new Bytes(preTxOutpointMsg),
-          new Bytes(preTxOutpointPadding),
-          new Sig(toHex(sig1)),
-          new PubKey(toHex(publicKeyIssuer)),
-          new Ripemd160(toHex(receiver1Pkh)),
-          transferSatoshis,
-          new Ripemd160(toHex(issuerPkh)),
-          changeAmount
-        )
-        .toScript();
-
-      // unlock other p2pkh inputs
-      for (let i = 0; i < curInputIndex; i++) {
-        unlockP2PKHInput(privateKey, tx, i, sighashType);
-      }
-      tx.inputs[curInputIndex].setScript(unlockingScript);
       issueTxid = await sendTx(tx);
       // issueTxid = tx.id;
       issueTxHex = tx.serialize();
       console.log("issue txid:       ", issueTxid);
-      console.log("issue txhex:       ", issueTxHex);
-      return;
+      console.log("issue txhex:      ", issueTxHex);
+      //return;
     }
 
     // transfer token to publicKeyReceiver2
@@ -184,69 +143,37 @@ const DataLen4 = 4;
       spendByIssueTxId = issueTxid;
       spendByIssueTxHex = issueTxHex;
 
-      token.setDataPart(genesisOutpoint + toHex(receiver1Pkh) + num2bin(uniqTokenId, DataLen8) + actionTransfer);
-      const tx = await createPayByOthersTx(privateKey.toAddress());
-      tx.addInput(
-        new bsv.Transaction.Input({
-          prevTxId: issueTxid,
-          outputIndex: 1,
-          script: "",
-        }),
-        token.lockingScript,
-        transferSatoshis
-      );
+      let txTransfer = nft.makeTxTransfer({
+        prevTxId: issueTxid,
+        outputIndex: 1,
+        inputOwnerPkh: receiver1Pkh,
+        outputOwnerPkh: receiver2Pkh,
+        thisChangePk: publicKeyIssuer,
+        inputTokenId: uniqTokenId,
+        outputTokenId: uniqTokenId,
+      });
 
-      const curInputIndex = tx.inputs.length - 1;
+      nft.unlockTxTransfer({
+        txTransfer,
+        preTxId: spendByIssueTxId,
+        preTxHex: spendByIssueTxHex,
+        preUtxoTxId,
+        preUtxoOutputIndex,
+        preUtxoTxHex,
+        privKeyTransfer: privateKeyReceiver1,
+        inputOwnerPkh: receiver1Pkh,
+        outputOwnerPkh: receiver2Pkh,
+        inputOwnerPk: publicKeyReceiver1,
+        changePkh: publicKeyReceiver1,
+        inputTokenId: uniqTokenId,
+      });
 
-      // transfer token to other one
-      lockingScript0 = [token.codePart.toASM(), genesisOutpoint + toHex(receiver2Pkh) + num2bin(uniqTokenId, DataLen8) + actionTransfer].join(" ");
-      tx.addOutput(
-        new bsv.Transaction.Output({
-          script: bsv.Script.fromASM(lockingScript0),
-          satoshis: transferSatoshis,
-        })
-      );
-
-      tx.change(privateKey.toAddress()).fee(FEE);
-
-      const changeAmount = tx.inputAmount - FEE - transferSatoshis;
-
-      const preimage = getPreimage(tx, token.lockingScript.toASM(), transferSatoshis, curInputIndex, sighashType);
-      const sig1 = signTx(tx, privateKeyReceiver1, token.lockingScript.toASM(), transferSatoshis, curInputIndex, sighashType);
-
-      // 获取Oracle签名
-      let sigInfo = await satoTxSigUTXOSpendBy(preUtxoTxId, preUtxoOutputIndex, spendByIssueTxId, preUtxoTxHex, spendByIssueTxHex);
-      // console.log("satoTxSigUTXOSpendBy:", sigInfo);
-      const preTxOutpointSig = BigInt("0x" + sigInfo.sigBE);
-      const preTxOutpointMsg = sigInfo.payload;
-      const preTxOutpointPadding = sigInfo.padding;
-
-      const unlockingScript = token
-        .transfer(
-          new SigHashPreimage(toHex(preimage)),
-          preTxOutpointSig,
-          new Bytes(preTxOutpointMsg),
-          new Bytes(preTxOutpointPadding),
-          new Sig(toHex(sig1)),
-          new PubKey(toHex(publicKeyReceiver1)),
-          new Ripemd160(toHex(receiver2Pkh)),
-          transferSatoshis,
-          new Ripemd160(toHex(issuerPkh)),
-          changeAmount
-        )
-        .toScript();
-
-      // unlock other p2pkh inputs
-      for (let i = 0; i < curInputIndex; i++) {
-        unlockP2PKHInput(privateKey, tx, i, sighashType);
-      }
-      tx.inputs[curInputIndex].setScript(unlockingScript);
       let transferTxid = await sendTx(tx);
       // let transferTxid = tx.id;
       let transferTxHex = tx.serialize();
       console.log("transfer txid:       ", transferTxid);
-      console.log("transfer txhex:       ", transferTxHex);
-      return;
+      console.log("transfer txhex:      ", transferTxHex);
+      // return;
     }
 
     console.log("Succeeded on testnet");

@@ -35,6 +35,10 @@ const reversedDummyTxId = '5884e5db9de218238671572340b207ee85b628074e7e467096c26
 const sighashType2Hex = s => s.toString(16)
 
 
+const { privateKey } = require("./privateKey");
+const dummyAddress = privateKey.toAddress()
+
+
 function newTx() {
   const utxo = {
     txId: 'a477af6b2667c29670467e4e0728b685ee07b240235771862318e29ddbe58458',
@@ -56,6 +60,7 @@ function reverseEndian(hexStr) {
  * Create new Tx by inputs and outputs
  *
  * {
+ *   tx: dummyTx,
  *   inputs: {
  *     txid: "xx",
  *     vout: 0,
@@ -69,8 +74,7 @@ function reverseEndian(hexStr) {
  *   }
  * }
  */
-function makeTx({ inputs, outputs } = {}) {
-  let txnew = new bsv.Transaction();
+function makeTx({tx, inputs, outputs } = {}) {
   inputs.forEach((input) => {
     var script;
     if (input.to) {
@@ -78,7 +82,7 @@ function makeTx({ inputs, outputs } = {}) {
     } else if (input.script) {
       script = bsv.Script.fromASM(input.script);
     }
-    txnew.addInput(new bsv.Transaction.Input({ prevTxId: input.txid, outputIndex: input.vout, script: "" }), script, input.satoshis);
+    tx.addInput(new bsv.Transaction.Input({ prevTxId: input.txid, outputIndex: input.vout, script: "" }), script, input.satoshis);
   });
 
   outputs.forEach((output) => {
@@ -88,10 +92,31 @@ function makeTx({ inputs, outputs } = {}) {
     } else if (output.script) {
       script = bsv.Script.fromASM(output.script);
     }
-    txnew.addOutput(new bsv.Transaction.Output({ script: script, satoshis: output.satoshis }));
+    tx.addOutput(new bsv.Transaction.Output({ script: script, satoshis: output.satoshis }));
   });
-  return txnew;
+  return tx;
 }
+
+function createDummyPayByOthersTx() {
+  // step 1: fetch utxos
+  let utxos = [{
+    tx_hash: dummyTxId,
+    tx_pos: 0,
+    value: 100000000 * 21
+  }]
+
+  utxos = utxos.map((utxo) => ({
+    txId: utxo.tx_hash,
+    outputIndex: utxo.tx_pos,
+    satoshis: utxo.value,
+    script: bsv.Script.buildPublicKeyHashOut(dummyAddress).toHex(),
+  }))
+
+  // step 2: build the tx
+  const tx = new bsv.Transaction().from(utxos)
+  return tx
+}
+
 
 async function createPayByOthersTx(address) {
   // step 1: fetch utxos
@@ -108,7 +133,6 @@ async function createPayByOthersTx(address) {
 
   // step 2: build the tx
   const tx = new bsv.Transaction().from(utxos)
-
   return tx
 }
 
@@ -247,6 +271,7 @@ module.exports = {
   compileContract,
   createLockingTx,
   createPayByOthersTx,
+  createDummyPayByOthersTx,
   createUnlockingTx,
   DataLen,
   DataLen4,
