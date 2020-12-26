@@ -13,9 +13,7 @@ import "util.scrypt";
 * TxID 32 Bytes
 * Index 4 Bytes
 * value 8 Bytes
-*
 */
-
 
 contract SatoTx {
   int rabinPubKey;
@@ -33,7 +31,8 @@ contract SatoTx {
 
   static bytes disableUtxoInGenesisTx = b'64697361626c654f687465725574786f4d6f76696e6746726f6d47656e65736973547821';
 
-  /* 溯源
+  /**
+   * 溯源
    * 查看前一个Tx，是否是GenesisTx；
    * 或者前一个Tx内，是否有被花费的UTXO的锁定脚本和当前运行的合约锁定脚本一致。
    */
@@ -85,7 +84,8 @@ contract SatoTx {
     require(matchGenesis == true);
   }
 
-  /* SideCheck
+  /**
+   * SideCheck
    * 查看当前Tx其他某输入的锁定脚本情况，需检查：
    * 1. 提供的sideTxUtxoMsg必须是当前Tx的非正在执行的某一UTXO合约
    *

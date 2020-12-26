@@ -42,21 +42,21 @@ describe("Test sCrypt contract NFT In Javascript", () => {
 
   it("should succeed when one new token is issued", async () => {
     const testIssue = async (privKeyIssuer, pkhGenesisIssuer, pkhNewReceiver, pkhNewIssuer, nextTokenId, followGenesis) => {
-      let preUtxoTxId;
-      let preUtxoTxHex;
+      let prevPrevTxId;
+      let prevPrevTxHex;
 
       if (followGenesis != true) {
         let fakeTxP2pk = nft.makeTxP2pk({ outputSatoshis: 200000000 });
-        preUtxoTxId = fakeTxP2pk.id;
-        preUtxoTxHex = fakeTxP2pk.serialize();
+        prevPrevTxId = fakeTxP2pk.id;
+        prevPrevTxHex = fakeTxP2pk.serialize();
       }
 
       let txP2pk = nft.makeTxP2pk({ outputSatoshis: 100000000 });
       let genesisOutpointTxId = txP2pk.id;
       let genesisPreTxHex = txP2pk.serialize();
       if (followGenesis) {
-        preUtxoTxId = txP2pk.id;
-        preUtxoTxHex = txP2pk.serialize();
+        prevPrevTxId = txP2pk.id;
+        prevPrevTxHex = txP2pk.serialize();
       }
 
       let txGenesis = nft.makeTxGenesis({
@@ -80,9 +80,9 @@ describe("Test sCrypt contract NFT In Javascript", () => {
         txIssue,
         preTxId: txGenesis.id,
         preTxHex: txGenesis.serialize(),
-        preUtxoTxId,
-        preUtxoOutputIndex: 0,
-        preUtxoTxHex,
+        prevPrevTxId,
+        prevPrevOutputIndex: 0,
+        prevPrevTxHex,
         privKeyIssuer,
         publicKeyIssuer,
         inputIssuerPkh: pkhGenesisIssuer,
@@ -155,9 +155,9 @@ describe("Test sCrypt contract NFT In Javascript", () => {
         preTxId: txIssue.id,
         preTxHex: txIssue.serialize(),
 
-        preUtxoTxId: txGenesis.id,
-        preUtxoOutputIndex: 0,
-        preUtxoTxHex: txGenesis.serialize(),
+        prevPrevTxId: txGenesis.id,
+        prevPrevOutputIndex: 0,
+        prevPrevTxHex: txGenesis.serialize(),
 
         privKeyTransfer,
         inputOwnerPkh: pkhOwner1,

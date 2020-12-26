@@ -4,7 +4,7 @@ import "satotx.scrypt";
 import "payload_nft.scrypt";
 import "payload_token.scrypt";
 
-/*
+/**
  * A safty NFT protocol
  *
  * 该合约实现了一个UTXO模式的NFT协议，可发行任意多种采用该协议的NFT。
@@ -23,13 +23,12 @@ import "payload_token.scrypt";
  *
  * 各个函数详细处理逻辑见各自文档。
  * 暂约定合约的函数花费utxo和产生utxo时，用箭头符号(->)来区分Tx内的input和output，(->)上为input花费的UTXO数据，下为output产生的UTXO数据。
- *
  */
 
 contract NFT {
   int rabinPubKey;
 
-  /*
+  /**
    * issue 函数允许发行人按tokenId从0递增发行nft，输出为一个ISSUE，一个TRANSFER
    *
    * issue:
@@ -81,7 +80,7 @@ contract NFT {
     require(hashOutputs == Util.hashOutputs(txPreimage));
   }
 
-  /*
+  /**
    * transfer 函数允许用户移动自己的nft，输出为一个TRANSFER，一个找零.
    *
    * transfer:
@@ -128,12 +127,13 @@ contract NFT {
     require(hashOutputs == Util.hashOutputs(txPreimage));
   }
 
-  /* user A make swap for token
+  /** 
+   * user A make swap for token
    * makeSwapToken:
    *   codePartA, GenesisPartA, ownerPkhA, tokenId, TRANSFER
    *    ->
    *   codePartA, GenesisPartA, ownerPkhA, tokenId, hash256(codePartB + GenesisPartB), tokenAmountB, SWAP
-   *
+   * 
    */
   public function makeSwapToken(SigHashPreimage txPreimage,
     int preTxOutpointSig, bytes preTxOutpointMsg, bytes preTxOutpointPadding,
@@ -179,7 +179,8 @@ contract NFT {
     require(hashOutputs == Util.hashOutputs(txPreimage));
   }
 
-  /* user A cancel swap token
+  /** 
+   * user A cancel swap token
    * cancelSwapToken:
    *   codePartA, GenesisPartA, ownerPkhA, tokenId, hash256(codePartB + GenesisPartB), tokenAmountB, SWAP
    *    ->
@@ -223,7 +224,8 @@ contract NFT {
     require(hashOutputs == Util.hashOutputs(txPreimage));
   }
 
-  /* user A finish swap
+  /** 
+   * user A finish swap
    * 此Tx涉及2种不同合约的执行，其中各合约执行各自的解锁函数，相互配合。
    * finishSwapToken:
    *   (nft.finishSwapToken) codePartNFT, GenesisPartA, ownerPkhA, tokenId, hash256(codePartTkn + GenesisPartB), tokenAmountB, SWAP
@@ -284,7 +286,8 @@ contract NFT {
     require(hashOutputs == Util.hashOutputs(txPreimage));
   }
 
-  /* user A sell
+  /** 
+   * user A sell
    * sell:
    *   codePart, GenesisPart, ownerPkhA, tokenId, TRANSFER
    *    ->
@@ -332,7 +335,8 @@ contract NFT {
     require(hashOutputs == Util.hashOutputs(txPreimage));
   }
 
-  /* user A cancel sell
+  /** 
+   * user A cancel sell
    * sell:
    *   codePart, GenesisPart, ownerPkhA, tokenId, satoshiAmount, SELL
    *    ->
@@ -376,7 +380,8 @@ contract NFT {
     require(hashOutputs == Util.hashOutputs(txPreimage));
   }
 
-  /* user B buy
+  /** 
+   * user B buy
    * buy:
    *   codePart, GenesisPart, ownerPkhA, tokenId, satoshiAmount, SELL
    *   ownerPkhB, satoshiAmount
@@ -424,7 +429,7 @@ contract NFT {
     require(hashOutputs == Util.hashOutputs(txPreimage));
   }
 
-  /*
+  /**
    * burn 函数用于用户销毁自己的1个nft，输入为1个TRANSFER，输出为1个找零
    */
   public function burn(SigHashPreimage txPreimage,
