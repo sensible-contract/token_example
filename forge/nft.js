@@ -105,7 +105,7 @@ class NFT {
    *
    * 创建一个新的Tx，用作GenesisTx溯源；发布时不需要这一步，直接用现成的utxo即可
    *
-   * @param {Object} params
+   * @param {Object} params 必要参数
    * @param {number} params.outputSatoshis 输出satoshi
    *
    * @returns {Tx} tx
@@ -129,7 +129,7 @@ class NFT {
   /**
    * 使用溯源outpoint创建GenesisTx，指定发行人和起始tokenId
    *
-   * @param {Object} params
+   * @param {Object} params 必要参数
    * @param {Sha256} params.prevTxId 溯源txid
    * @param {number} params.outputIndex 溯源outputIndex
    * @param {number=} params.issueOutputIndex = 0 溯源初始发起的Issue输出的outputIdx
@@ -174,18 +174,19 @@ class NFT {
   /**
    * 创建IssueTx，发行下一个Token给某接收人
    *
-   * @param {Object} params
+   * @param {Object} params 必要参数
    * @param {Sha256} params.prevTxId 上一个issue utxo txid
    * @param {number} params.outputIndex 上一个issue utxo outputIndex
-   * @param {Ripemd160} params.inputIssuerPkh 发行人Pkh
    * @param {Ripemd160} params.outputOwnerPkh 新Token接收人Pkh
    * @param {Ripemd160} params.changeAddress 找零地址
-   * @param {number} params.inputTokenId 输入tokenId
-   * @param {number} params.outputTokenId 下一个发行tokenId, 应当为inputTokenId+1
    *
+   * @param {Object} envs 调用环境
+   * @param {Ripemd160} envs.inputIssuerPkh 发行人Pkh，应当为input锁定脚本中确定的Issuer
+   * @param {number} envs.inputTokenId 应当为input锁定脚本中确定的tokenId
+   * @param {number} envs.outputTokenId 下一个发行tokenId, 应当为inputTokenId+1
    * @returns {Tx} tx
    */
-  makeTxIssue({ prevTxId, outputIndex, inputIssuerPkh, outputOwnerPkh, changeAddress, inputTokenId, outputTokenId }) {
+  makeTxIssue({ prevTxId, outputIndex, outputOwnerPkh, changeAddress }, { inputIssuerPkh, inputTokenId, outputTokenId }) {
     let pl = new PayloadNFT({ dataType: ISSUE, ownerPkh: inputIssuerPkh, tokenId: inputTokenId });
     const utxoLockingScript = [this.codePart, this.genesisPart, pl.dump()].join(" ");
 
@@ -229,18 +230,19 @@ class NFT {
    * 创建 TransferTx
    * Token拥有者转移token到下一个接收人
    *
-   * @param {Object} params
+   * @param {Object} params 必要参数
    * @param {Sha256} params.prevTxId 上一个transfer utxo txid
    * @param {number} params.outputIndex 上一个transfer utxo outputIndex
-   * @param {Ripemd160} params.inputOwnerPkh Token原来的所属人pkh
    * @param {Ripemd160} params.outputOwnerPkh Token新的所属人pkh
    * @param {Ripemd160} params.changeAddress 找零地址
-   * @param {number} params.inputTokenId Token原来的Id，输入锁定脚本中的tokenId
-   * @param {number} params.outputTokenId Token新的Id，输出锁定脚本中的tokenId, 应当和原Id保持一致
    *
+   * @param {Object} envs 调用环境
+   * @param {Ripemd160} envs.inputOwnerPkh Token原来的所属人pkh
+   * @param {number} envs.inputTokenId Token原来的Id，输入锁定脚本中的tokenId
+   * @param {number} envs.outputTokenId Token新的Id，输出锁定脚本中的tokenId, 应当和原Id保持一致
    * @returns {Tx} tx
    */
-  makeTxTransfer({ prevTxId, outputIndex, inputOwnerPkh, outputOwnerPkh, changeAddress, inputTokenId, outputTokenId }) {
+  makeTxTransfer({ prevTxId, outputIndex, outputOwnerPkh, changeAddress }, { inputOwnerPkh, inputTokenId, outputTokenId }) {
     let pl = new PayloadNFT({ dataType: TRANSFER, ownerPkh: inputOwnerPkh, tokenId: inputTokenId });
     const utxoLockingScript = [this.codePart, this.genesisPart, pl.dump()].join(" ");
     pl.ownerPkh = outputOwnerPkh;
@@ -276,16 +278,17 @@ class NFT {
    * 创建 TransferBurnTx
    * 用户自行销毁token，并取回token上的bsv
    *
-   * @param {Object} params
+   * @param {Object} params 必要参数
    * @param {Sha256} params.prevTxId 上一个transfer utxo txid
    * @param {number} params.outputIndex 上一个transfer utxo outputIndex
-   * @param {Ripemd160} params.inputOwnerPkh Token原来的所属人pkh
    * @param {Ripemd160} params.changeAddress 找零地址
-   * @param {number} params.inputTokenId Token原来的Id
    *
+   * @param {Object} envs 调用环境
+   * @param {Ripemd160} envs.inputOwnerPkh Token原来的所属人pkh
+   * @param {number} envs.inputTokenId Token原来的Id
    * @returns {Tx} tx
    */
-  makeTxTransferBurn({ prevTxId, outputIndex, inputOwnerPkh, changeAddress, inputTokenId }) {
+  makeTxTransferBurn({ prevTxId, outputIndex, changeAddress }, { inputOwnerPkh, inputTokenId }) {
     let pl = new PayloadNFT({ dataType: TRANSFER, ownerPkh: inputOwnerPkh, tokenId: inputTokenId });
     const utxoLockingScript = [this.codePart, this.genesisPart, pl.dump()].join(" ");
 
@@ -315,14 +318,16 @@ class NFT {
    * unlockTxIssue
    * 为之前创建的issue Tx生成解锁脚本，并签名其他输入
    *
-   * @param {Object} params
+   * @param {Object} params 必要参数
    * @param {Tx} params.txIssue 用makeTxIssue创建的Tx对象
-   * @param {PrivateKey} params.privKeyIssuer 发行者私钥
-   * @param {Pubkey} params.publicKeyIssuer 发行者公钥
-   * @param {Ripemd160} params.inputIssuerPkh 发行者公钥Hash
    * @param {Ripemd160} params.outputReceiverPkh 接收人pkh
    * @param {Ripemd160} params.changePkh 找零地址
-   * @param {number} params.inputTokenId 输入锁定脚本中的tokenId
+   *
+   * @param {Object} envs 调用环境
+   * @param {PrivateKey} envs.privKeyIssuer 发行者私钥
+   * @param {Pubkey} envs.publicKeyIssuer 发行者公钥
+   * @param {Ripemd160} envs.inputIssuerPkh 必须是输入锁定脚本中的发行者公钥Hash
+   * @param {number} envs.inputTokenId 必须是输入锁定脚本中的tokenId
    *
    * @param {Object} sigtx
    * @param {Sha256} sigtx.preTxId txIssue前一个txid
@@ -333,21 +338,11 @@ class NFT {
    *
    * @returns {Object} Contract
    */
-  async unlockTxIssue({
-    txIssue,
-    privKeyIssuer,
-    publicKeyIssuer,
-    inputIssuerPkh,
-    outputReceiverPkh,
-    changePkh,
-    inputTokenId,
-  }, {
-    preTxId,
-    preTxHex,
-    prevPrevTxId,
-    prevPrevOutputIndex,
-    prevPrevTxHex,
-  }) {
+  async unlockTxIssue(
+    { txIssue, outputReceiverPkh, changePkh },
+    { privKeyIssuer, publicKeyIssuer, inputIssuerPkh, inputTokenId },
+    { preTxId, preTxHex, prevPrevTxId, prevPrevOutputIndex, prevPrevTxHex }
+  ) {
     // 设置校验环境
     const changeAmount = txIssue.inputAmount - FEE - issueSatoshis - transferSatoshis;
     const curInputIndex = txIssue.inputs.length - 1;
@@ -397,14 +392,16 @@ class NFT {
    * unlockTxTransfer
    * 为之前创建的Transfer Tx生成解锁脚本，并签名其他输入
    *
-   * @param {Object} params
+   * @param {Object} params 必要参数
    * @param {Tx} params.txTransfer 用makeTxTransfer创建的Tx对象
-   * @param {PrivateKey} params.privKeyTransfer 之前所属人的私钥
-   * @param {Ripemd160} params.inputOwnerPkh 之前所属人的公钥Hash
    * @param {Ripemd160} params.outputOwnerPkh 新所属人的公钥Hash
-   * @param {PubKey} params.inputOwnerPk 之前所属人的公钥
    * @param {Ripemd160} params.changePkh 找零地址
-   * @param {number} params.inputTokenId 输入锁定脚本中的tokenId
+   *
+   * @param {Object} envs 调用环境
+   * @param {PrivateKey} envs.privKeyTransfer 之前所属人的私钥
+   * @param {Ripemd160} envs.inputOwnerPkh 之前所属人的公钥Hash
+   * @param {PubKey} envs.inputOwnerPk 之前所属人的公钥
+   * @param {number} envs.inputTokenId 输入锁定脚本中的tokenId
    *
    * @param {Object} sigtx
    * @param {Sha256} sigtx.preTxId txTransfer前一个txid
@@ -414,21 +411,11 @@ class NFT {
    * @param {String} sigtx.prevPrevTxHex txTransfer前前一个tx hex
    * @returns {Object} Contract
    */
-  async unlockTxTransfer({
-    txTransfer,
-    privKeyTransfer,
-    inputOwnerPkh,
-    outputOwnerPkh,
-    inputOwnerPk,
-    changePkh,
-    inputTokenId,
-  },{
-    preTxId,
-    preTxHex,
-    prevPrevTxId,
-    prevPrevOutputIndex,
-    prevPrevTxHex,
-  }) {
+  async unlockTxTransfer(
+    { txTransfer, outputOwnerPkh, changePkh },
+    { privKeyTransfer, inputOwnerPkh, inputOwnerPk, inputTokenId },
+    { preTxId, preTxHex, prevPrevTxId, prevPrevOutputIndex, prevPrevTxHex }
+  ) {
     const changeAmount = txTransfer.inputAmount - FEE - transferSatoshis;
     const curInputIndex = txTransfer.inputs.length - 1;
 
@@ -476,17 +463,19 @@ class NFT {
   /**
    * 为之前创建的TransferBurn Tx生成解锁脚本，并签名其他输入
    *
-   * @param {Object} params
-   * @param {Sha256} params.txTransferBurn 用makeTxTransferBurn创建的Tx对象
-   * @param {PrivateKey} params.privKeyTransfer 之前所属人的私钥
-   * @param {Ripemd160} params.inputOwnerPkh 之前所属人的公钥Hash
-   * @param {PubKey} params.inputOwnerPk 之前所属人的公钥
+   * @param {Object} params 必要参数
+   * @param {Tx} params.txTransferBurn 用makeTxTransferBurn创建的Tx对象
    * @param {Ripemd160} params.changePkh 找零地址
-   * @param {number} params.inputTokenId 输入锁定脚本中的tokenId
+   *
+   * @param {Object} envs 调用环境
+   * @param {PrivateKey} envs.privKeyTransfer 之前所属人的私钥
+   * @param {PubKey} envs.inputOwnerPk 之前所属人的公钥
+   * @param {Ripemd160} envs.inputOwnerPkh 之前所属人的公钥Hash
+   * @param {number} envs.inputTokenId 输入锁定脚本中的tokenId
    *
    * @returns {Object} Contract
    */
-  async unlockTxTransferBurn({ txTransferBurn, privKeyTransfer, inputOwnerPkh, inputOwnerPk, changePkh, inputTokenId }) {
+  async unlockTxTransferBurn({ txTransferBurn, changePkh }, { privKeyTransfer, inputOwnerPk, inputOwnerPkh, inputTokenId }) {
     const changeAmount = txTransferBurn.inputAmount - FEE;
     const curInputIndex = txTransferBurn.inputs.length - 1;
 

@@ -34,11 +34,26 @@ describe("Test sCrypt contract NFT In Javascript", () => {
   let nft = new NFT();
   const currTokenId = 0;
 
-  before(() => {
-  });
+  before(() => {});
 
   it("should succeed when one new token is issued", async () => {
-    const testIssue = async (privKeyIssuer, pkhGenesisIssuer, pkhNewReceiver, pkhNewIssuer, nextTokenId, followGenesis) => {
+    /**
+     * 测试issue，先从0开始创建一连串的Tx，直到创建出包含`Issue`类型数据的锁定脚本；然后调用合约的unlock创建解锁脚本；
+     * 即可测试合约或发布被解锁的合约Tx
+     *
+     * * 创建Genesis之前的Tx
+     * * 再创建Genesis Tx
+     * * 然后创建Issue Tx
+     * * 最后解锁Issue Tx
+     *
+     * @param {PrivateKey} privKeyIssuer 发行人私钥
+     * @param {Ripemd160} pkhGenesisIssuer 初始设置的发行人
+     * @param {Ripemd160} pkhNewReceiver 新token的接收人
+     * @param {Ripemd160} pkhNewIssuer issue合约内新产生的发行人，应当和pkhGenesisIssuer一致
+     * @param {number} nextTokenId issue合约内新产生的tokenId
+     * @param {Boolean} followGenesis 测试用，issue合约内utxo是否和Genesis outpoint一致
+     */
+    function testIssue(privKeyIssuer, pkhGenesisIssuer, pkhNewReceiver, pkhNewIssuer, nextTokenId, followGenesis) {
       let prevPrevTxId;
       let prevPrevTxHex;
 
@@ -63,32 +78,41 @@ describe("Test sCrypt contract NFT In Javascript", () => {
         outputTokenId: currTokenId,
       });
 
-      let txIssue = nft.makeTxIssue({
-        prevTxId: txGenesis.id,
-        outputIndex: 0,
-        inputIssuerPkh: pkhNewIssuer,
-        outputOwnerPkh: pkhNewReceiver,
-        changeAddress: dummyAddress,
-        inputTokenId: currTokenId,
-        outputTokenId: nextTokenId,
-      });
+      let txIssue = nft.makeTxIssue(
+        {
+          prevTxId: txGenesis.id,
+          outputIndex: 0,
+          outputOwnerPkh: pkhNewReceiver,
+          changeAddress: dummyAddress,
+        },
+        {
+          inputIssuerPkh: pkhNewIssuer,
+          inputTokenId: currTokenId,
+          outputTokenId: nextTokenId,
+        }
+      );
 
-      return nft.unlockTxIssue({
-        txIssue: txIssue,
-        privKeyIssuer: privKeyIssuer,
-        publicKeyIssuer: publicKeyIssuer,
-        inputIssuerPkh: pkhGenesisIssuer,
-        outputReceiverPkh: receiver1Pkh,
-        changePkh: dummyPkh,
-        inputTokenId: currTokenId,
-      }, {
-        preTxId: txGenesis.id,
-        preTxHex: txGenesis.serialize(),
-        prevPrevTxId: prevPrevTxId,
-        prevPrevOutputIndex: 0,
-        prevPrevTxHex: prevPrevTxHex,
-      });
-    };
+      return nft.unlockTxIssue(
+        {
+          txIssue: txIssue,
+          outputReceiverPkh: receiver1Pkh,
+          changePkh: dummyPkh,
+        },
+        {
+          privKeyIssuer: privKeyIssuer,
+          publicKeyIssuer: publicKeyIssuer,
+          inputIssuerPkh: pkhGenesisIssuer,
+          inputTokenId: currTokenId,
+        },
+        {
+          preTxId: txGenesis.id,
+          preTxHex: txGenesis.serialize(),
+          prevPrevTxId: prevPrevTxId,
+          prevPrevOutputIndex: 0,
+          prevPrevTxHex: prevPrevTxHex,
+        }
+      );
+    }
 
     let verifyData = await testIssue(issuerPrivKey, issuerPkh, receiver1Pkh, issuerPkh, currTokenId + 1, true);
     let result = verifyData.verify();
@@ -116,7 +140,26 @@ describe("Test sCrypt contract NFT In Javascript", () => {
   });
 
   it("should succeed when a token is transferred", async () => {
-    const testTransfer = async (privKeyIssue, privKeyTransfer, pkhGenesisIssuer, pkhNewIssuer, pkhOwner1, pkhOwner2, pkOwner1, transTokenId) => {
+    /**
+     * 测试transfer，先从0开始创建一连串的Tx，直到创建出包含`Transfer`类型数据的锁定脚本；然后调用合约的unlock创建解锁脚本；
+     * 即可测试合约或发布被解锁的合约Tx
+     *
+     * * 创建Genesis之前的Tx
+     * * 再创建Genesis Tx
+     * * 然后创建Issue Tx
+     * * 然后创建Transfer Tx
+     * * 最后解锁Transfer Tx
+     *
+     * @param {PrivateKey} privKeyIssue 发行人私钥
+     * @param {PrivateKey} privKeyTransfer 接收人私钥
+     * @param {Ripemd160} pkhGenesisIssuer 初始设置的发行人
+     * @param {Ripemd160} pkhNewIssuer issue合约内新产生的发行人，应当和pkhGenesisIssuer一致
+     * @param {Ripemd160} pkhOwner1 接收人1
+     * @param {Ripemd160} pkhOwner2 接收人2
+     * @param {Pubkey} pkOwner1 接收人1的公钥
+     * @param {number} transTokenId 被trans的tokenId
+     */
+    function testTransfer(privKeyIssue, privKeyTransfer, pkhGenesisIssuer, pkhNewIssuer, pkhOwner1, pkhOwner2, pkOwner1, transTokenId) {
       let txP2pk = nft.makeTxP2pk({ outputSatoshis: 100000000 });
       let genesisOutpointTxId = txP2pk.id;
       let genesisPreTxHex = txP2pk.serialize();
@@ -128,42 +171,55 @@ describe("Test sCrypt contract NFT In Javascript", () => {
         outputTokenId: currTokenId,
       });
 
-      let txIssue = nft.makeTxIssue({
-        prevTxId: txGenesis.id,
-        outputIndex: 0,
-        inputIssuerPkh: pkhNewIssuer,
-        outputOwnerPkh: pkhOwner1,
-        changeAddress: dummyAddress,
-        inputTokenId: currTokenId,
-        outputTokenId: currTokenId + 1,
-      });
+      let txIssue = nft.makeTxIssue(
+        {
+          prevTxId: txGenesis.id,
+          outputIndex: 0,
+          outputOwnerPkh: pkhOwner1,
+          changeAddress: dummyAddress,
+        },
+        {
+          inputIssuerPkh: pkhNewIssuer,
+          inputTokenId: currTokenId,
+          outputTokenId: currTokenId + 1,
+        }
+      );
 
-      let txTransfer = nft.makeTxTransfer({
-        prevTxId: txIssue.id,
-        outputIndex: 1,
-        inputOwnerPkh: pkhOwner1,
-        outputOwnerPkh: pkhOwner2,
-        changeAddress: dummyAddress,
-        inputTokenId: currTokenId + 1,
-        outputTokenId: transTokenId,
-      });
+      let txTransfer = nft.makeTxTransfer(
+        {
+          prevTxId: txIssue.id,
+          outputIndex: 1,
+          outputOwnerPkh: pkhOwner2,
+          changeAddress: dummyAddress,
+        },
+        {
+          inputOwnerPkh: pkhOwner1,
+          inputTokenId: currTokenId + 1,
+          outputTokenId: transTokenId,
+        }
+      );
 
-      return nft.unlockTxTransfer({
-        txTransfer: txTransfer,
-        privKeyTransfer: privKeyTransfer,
-        inputOwnerPkh: pkhOwner1,
-        outputOwnerPkh: pkhOwner2,
-        inputOwnerPk: pkOwner1,
-        changePkh: dummyPkh,
-        inputTokenId: currTokenId + 1,
-      },{
-        preTxId: txIssue.id,
-        preTxHex: txIssue.serialize(),
-        prevPrevTxId: txGenesis.id,
-        prevPrevOutputIndex: 0,
-        prevPrevTxHex: txGenesis.serialize(),
-      });
-    };
+      return nft.unlockTxTransfer(
+        {
+          txTransfer: txTransfer,
+          outputOwnerPkh: pkhOwner2,
+          changePkh: dummyPkh,
+        },
+        {
+          privKeyTransfer: privKeyTransfer,
+          inputOwnerPkh: pkhOwner1,
+          inputOwnerPk: pkOwner1,
+          inputTokenId: currTokenId + 1,
+        },
+        {
+          preTxId: txIssue.id,
+          preTxHex: txIssue.serialize(),
+          prevPrevTxId: txGenesis.id,
+          prevPrevOutputIndex: 0,
+          prevPrevTxHex: txGenesis.serialize(),
+        }
+      );
+    }
 
     let verifyData = await testTransfer(issuerPrivKey, receiver1PrivKey, issuerPkh, issuerPkh, receiver1Pkh, issuerPkh, receiver1Pk, currTokenId + 1);
     let result = verifyData.verify();
@@ -181,7 +237,24 @@ describe("Test sCrypt contract NFT In Javascript", () => {
   });
 
   it("should success when receiver burn the token", async () => {
-    const testBurn = async (privKeyTransfer, pkhGenesisIssuer, pkhNewIssuer, pkhOwner, pkOwner, transferTokenId) => {
+    /**
+     * 测试burn，先从0开始创建一连串的Tx，直到创建出包含`Transfer`类型数据的锁定脚本；然后调用合约的unlock创建解锁脚本；
+     * 即可测试合约或发布被解锁的合约Tx
+     *
+     * * 创建Genesis之前的Tx
+     * * 再创建Genesis Tx
+     * * 然后创建Issue Tx
+     * * 然后创建Burn Tx
+     * * 最后解锁Burn Tx
+     *
+     * @param {PrivateKey} privKeyTransfer 接收人私钥
+     * @param {Ripemd160} pkhGenesisIssuer 初始设置的发行人
+     * @param {Ripemd160} pkhNewIssuer issue合约内新产生的发行人，应当和pkhGenesisIssuer一致
+     * @param {Ripemd160} pkhOwner 接收人
+     * @param {Pubkey} pkOwner 接收人公钥
+     * @param {number} transferTokenId 被销毁的tokenId
+     */
+    function testBurn(privKeyTransfer, pkhGenesisIssuer, pkhNewIssuer, pkhOwner, pkOwner, transferTokenId) {
       let txP2pk = nft.makeTxP2pk({ outputSatoshis: 100000000 });
       let genesisOutpointTxId = txP2pk.id;
 
@@ -192,33 +265,45 @@ describe("Test sCrypt contract NFT In Javascript", () => {
         outputTokenId: currTokenId,
       });
 
-      let txIssue = nft.makeTxIssue({
-        prevTxId: txGenesis.id,
-        outputIndex: 0,
-        inputIssuerPkh: pkhNewIssuer,
-        outputOwnerPkh: pkhOwner,
-        changeAddress: dummyAddress,
-        inputTokenId: currTokenId,
-        outputTokenId: transferTokenId,
-      });
+      let txIssue = nft.makeTxIssue(
+        {
+          prevTxId: txGenesis.id,
+          outputIndex: 0,
+          outputOwnerPkh: pkhOwner,
+          changeAddress: dummyAddress,
+        },
+        {
+          inputIssuerPkh: pkhNewIssuer,
+          inputTokenId: currTokenId,
+          outputTokenId: transferTokenId,
+        }
+      );
 
-      let txTransferBurn = nft.makeTxTransferBurn({
-        prevTxId: txIssue.id,
-        outputIndex: 1,
-        inputOwnerPkh: pkhOwner,
-        changeAddress: dummyAddress,
-        inputTokenId: transferTokenId,
-      });
+      let txTransferBurn = nft.makeTxTransferBurn(
+        {
+          prevTxId: txIssue.id,
+          outputIndex: 1,
+          changeAddress: dummyAddress,
+        },
+        {
+          inputOwnerPkh: pkhOwner,
+          inputTokenId: transferTokenId,
+        }
+      );
 
-      return nft.unlockTxTransferBurn({
-        txTransferBurn: txTransferBurn,
-        privKeyTransfer: privKeyTransfer,
-        inputOwnerPkh: pkhOwner,
-        inputOwnerPk: pkOwner,
-        changePkh: dummyPkh,
-        inputTokenId: transferTokenId,
-      });
-    };
+      return nft.unlockTxTransferBurn(
+        {
+          txTransferBurn: txTransferBurn,
+          changePkh: dummyPkh,
+        },
+        {
+          privKeyTransfer: privKeyTransfer,
+          inputOwnerPk: pkOwner,
+          inputOwnerPkh: pkhOwner,
+          inputTokenId: transferTokenId,
+        }
+      );
+    }
 
     let verifyData = await testBurn(receiver1PrivKey, issuerPkh, issuerPkh, receiver1Pkh, receiver1Pk, currTokenId + 1);
     let result = verifyData.verify();
