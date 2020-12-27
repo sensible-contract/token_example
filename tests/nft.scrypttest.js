@@ -9,8 +9,6 @@ const dummyPublicKey = bsv.PublicKey.fromPrivateKey(privateKey);
 const dummyPkh = bsv.crypto.Hash.sha256ripemd160(dummyPublicKey.toBuffer());
 
 describe("Test sCrypt contract NFT In Javascript", () => {
-  let nft;
-
   /* 02fac240917b1bc22871af783b9a958661bc2b497b27f571a32fe6988e8ad2b38f */
   // const privateKey1 = new bsv.PrivateKey.fromRandom('testnet')
   const issuerPrivKey = new bsv.PrivateKey.fromWIF("cPbFsSjFjCbfzTRc8M4nKNGhVJspwnPQAcDhdJgVr3Pdwpqq7LfA");
@@ -33,11 +31,10 @@ describe("Test sCrypt contract NFT In Javascript", () => {
   console.log("pkhReceiver2:", toHex(receiver2Pkh)); // 36d163b7bb8808077b768091fe93c3be55f44b15
   console.log(`address: '${receiver2PrivKey.toAddress()}'`);
 
+  let nft = new NFT();
   const currTokenId = 0;
 
   before(() => {
-    nft = new NFT();
-    console.log("issuer pubkey", toHex(publicKeyIssuer));
   });
 
   it("should succeed when one new token is issued", async () => {
@@ -77,18 +74,19 @@ describe("Test sCrypt contract NFT In Javascript", () => {
       });
 
       return nft.unlockTxIssue({
-        txIssue,
-        preTxId: txGenesis.id,
-        preTxHex: txGenesis.serialize(),
-        prevPrevTxId,
-        prevPrevOutputIndex: 0,
-        prevPrevTxHex,
-        privKeyIssuer,
-        publicKeyIssuer,
+        txIssue: txIssue,
+        privKeyIssuer: privKeyIssuer,
+        publicKeyIssuer: publicKeyIssuer,
         inputIssuerPkh: pkhGenesisIssuer,
         outputReceiverPkh: receiver1Pkh,
         changePkh: dummyPkh,
         inputTokenId: currTokenId,
+      }, {
+        preTxId: txGenesis.id,
+        preTxHex: txGenesis.serialize(),
+        prevPrevTxId: prevPrevTxId,
+        prevPrevOutputIndex: 0,
+        prevPrevTxHex: prevPrevTxHex,
       });
     };
 
@@ -151,20 +149,19 @@ describe("Test sCrypt contract NFT In Javascript", () => {
       });
 
       return nft.unlockTxTransfer({
-        txTransfer,
-        preTxId: txIssue.id,
-        preTxHex: txIssue.serialize(),
-
-        prevPrevTxId: txGenesis.id,
-        prevPrevOutputIndex: 0,
-        prevPrevTxHex: txGenesis.serialize(),
-
-        privKeyTransfer,
+        txTransfer: txTransfer,
+        privKeyTransfer: privKeyTransfer,
         inputOwnerPkh: pkhOwner1,
         outputOwnerPkh: pkhOwner2,
         inputOwnerPk: pkOwner1,
         changePkh: dummyPkh,
         inputTokenId: currTokenId + 1,
+      },{
+        preTxId: txIssue.id,
+        preTxHex: txIssue.serialize(),
+        prevPrevTxId: txGenesis.id,
+        prevPrevOutputIndex: 0,
+        prevPrevTxHex: txGenesis.serialize(),
       });
     };
 
@@ -214,8 +211,8 @@ describe("Test sCrypt contract NFT In Javascript", () => {
       });
 
       return nft.unlockTxTransferBurn({
-        txTransferBurn,
-        privKeyTransfer,
+        txTransferBurn: txTransferBurn,
+        privKeyTransfer: privKeyTransfer,
         inputOwnerPkh: pkhOwner,
         inputOwnerPk: pkOwner,
         changePkh: dummyPkh,

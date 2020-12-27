@@ -27,7 +27,6 @@ const issueSatoshis = 5000;
 const transferSatoshis = 5000;
 
 const Signature = bsv.crypto.Signature;
-// Note: ANYONECANPAY
 const sighashType = Signature.SIGHASH_ANYONECANPAY | Signature.SIGHASH_ALL | Signature.SIGHASH_FORKID;
 
 const ISSUE = "00";
@@ -80,11 +79,16 @@ class PayloadNFT {
 const rabinPubKey = 0x3d7b971acdd7bff96ca34857e36685038d9c91e3af693cf9e71d170a8aac885b62dd4746fe7ebd7f3d7d16a51d63aa86a4256bdc853d999193ec3e614d4917e3dde9f6954d1784d5a2580f6fb130442e6a8ad0850aeaa100920fcab9176a05eb1aa3b5ee3e3dc75ae7cde3c25d350bba92956c8bacb0c735d39240c6442bab9dn;
 
 /**
- * NFT
- * @constructor nft合约
- * @class NFT
+ * NFT Tx forge，创建并签名合约相关的Tx
  */
 class NFT {
+  /**
+   * 创建nft forge, 如果参数deploy为true，则会使用真实utxos创建Tx，否则使用dummy utxos。
+   *
+   * @param {Boolean} deploy 是否是部署
+   *
+   * @constructor NFT合约 forge
+   */
   constructor(deploy = false) {
     this.deploy = deploy;
     if (false) {
@@ -98,13 +102,11 @@ class NFT {
   }
 
   /**
-   * @for NFT
    *
-   * @method makeTxP2pk
-   * @description 创建一个新的Tx，用作GenesisTx溯源；发布时不需要这一步，直接用现成的utxo即可
+   * 创建一个新的Tx，用作GenesisTx溯源；发布时不需要这一步，直接用现成的utxo即可
    *
    * @param {Object} params
-   * @param {number} params.outputSatoshis
+   * @param {number} params.outputSatoshis 输出satoshi
    *
    * @returns {Tx} tx
    */
@@ -130,7 +132,7 @@ class NFT {
    * @param {Object} params
    * @param {Sha256} params.prevTxId 溯源txid
    * @param {number} params.outputIndex 溯源outputIndex
-   * @param {number} params.issueOutputIndex = 0 溯源初始发起的Issue输出的outputIdx
+   * @param {number=} params.issueOutputIndex = 0 溯源初始发起的Issue输出的outputIdx
    * @param {Ripemd160} params.outputIssuerPkh 初始化发行人Pkh
    * @param {number} params.outputTokenId 初始化发行tokenId
    *
@@ -315,11 +317,6 @@ class NFT {
    *
    * @param {Object} params
    * @param {Tx} params.txIssue 用makeTxIssue创建的Tx对象
-   * @param {Sha256} params.preTxId txIssue前一个txid
-   * @param {String} params.preTxHex txIssue前一个tx hex
-   * @param {Sha256} params.prevPrevTxId txIssue前前一个txid
-   * @param {number} params.prevPrevOutputIndex txIssue前前一个vout
-   * @param {String} params.prevPrevTxHex txIssue前前一个tx hex
    * @param {PrivateKey} params.privKeyIssuer 发行者私钥
    * @param {Pubkey} params.publicKeyIssuer 发行者公钥
    * @param {Ripemd160} params.inputIssuerPkh 发行者公钥Hash
@@ -327,24 +324,31 @@ class NFT {
    * @param {Ripemd160} params.changePkh 找零地址
    * @param {number} params.inputTokenId 输入锁定脚本中的tokenId
    *
+   * @param {Object} sigtx
+   * @param {Sha256} sigtx.preTxId txIssue前一个txid
+   * @param {String} sigtx.preTxHex txIssue前一个tx hex
+   * @param {Sha256} sigtx.prevPrevTxId txIssue前前一个txid
+   * @param {number} sigtx.prevPrevOutputIndex txIssue前前一个vout
+   * @param {String} sigtx.prevPrevTxHex txIssue前前一个tx hex
+   *
    * @returns {Object} Contract
    */
   async unlockTxIssue({
     txIssue,
-    preTxId,
-    preTxHex,
-    prevPrevTxId,
-    prevPrevOutputIndex,
-    prevPrevTxHex,
     privKeyIssuer,
     publicKeyIssuer,
     inputIssuerPkh,
     outputReceiverPkh,
     changePkh,
     inputTokenId,
+  }, {
+    preTxId,
+    preTxHex,
+    prevPrevTxId,
+    prevPrevOutputIndex,
+    prevPrevTxHex,
   }) {
     // 设置校验环境
-
     const changeAmount = txIssue.inputAmount - FEE - issueSatoshis - transferSatoshis;
     const curInputIndex = txIssue.inputs.length - 1;
 
@@ -395,11 +399,6 @@ class NFT {
    *
    * @param {Object} params
    * @param {Tx} params.txTransfer 用makeTxTransfer创建的Tx对象
-   * @param {Sha256} params.preTxId txTransfer前一个txid
-   * @param {String} params.preTxHex txTransfer前一个tx hex
-   * @param {Sha256} params.prevPrevTxId txTransfer前前一个txid
-   * @param {number} params.prevPrevOutputIndex txTransfer前前一个vout
-   * @param {String} params.prevPrevTxHex txTransfer前前一个tx hex
    * @param {PrivateKey} params.privKeyTransfer 之前所属人的私钥
    * @param {Ripemd160} params.inputOwnerPkh 之前所属人的公钥Hash
    * @param {Ripemd160} params.outputOwnerPkh 新所属人的公钥Hash
@@ -407,21 +406,28 @@ class NFT {
    * @param {Ripemd160} params.changePkh 找零地址
    * @param {number} params.inputTokenId 输入锁定脚本中的tokenId
    *
+   * @param {Object} sigtx
+   * @param {Sha256} sigtx.preTxId txTransfer前一个txid
+   * @param {String} sigtx.preTxHex txTransfer前一个tx hex
+   * @param {Sha256} sigtx.prevPrevTxId txTransfer前前一个txid
+   * @param {number} sigtx.prevPrevOutputIndex txTransfer前前一个vout
+   * @param {String} sigtx.prevPrevTxHex txTransfer前前一个tx hex
    * @returns {Object} Contract
    */
   async unlockTxTransfer({
     txTransfer,
-    preTxId,
-    preTxHex,
-    prevPrevTxId,
-    prevPrevOutputIndex,
-    prevPrevTxHex,
     privKeyTransfer,
     inputOwnerPkh,
     outputOwnerPkh,
     inputOwnerPk,
     changePkh,
     inputTokenId,
+  },{
+    preTxId,
+    preTxHex,
+    prevPrevTxId,
+    prevPrevOutputIndex,
+    prevPrevTxHex,
   }) {
     const changeAmount = txTransfer.inputAmount - FEE - transferSatoshis;
     const curInputIndex = txTransfer.inputs.length - 1;
