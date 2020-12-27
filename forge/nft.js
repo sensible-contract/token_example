@@ -35,24 +35,30 @@ const SWAP = "02";
 const SELL = "03";
 
 /**
- * @class PayloadNFT
- * @constructor
+ * PayloadNFT
  */
 class PayloadNFT {
+  /**
+   * 解析、构造NFT合约的数据部分
+   *
+   * @constructor
+   *
+   * @param {Object} params
+   * @param {String=} params.scriptCode 合约代码部分
+   * @param {string} params.dataType 数据类型，1字节
+   * @param {Ripemd160} params.ownerPkh 所属人
+   * @param {number} params.tokenId tokenId
+   * @param {String=} params.codeWithGenesisPartHashSwap 在和Token合约进行swap时，指定Token合约的code前缀部分
+   * @param {number=} params.amountSwap 在和Token合约进行swap时，要求的token数量
+   * @param {number=} params.satoshiAmountSell 在出售NFT时，要求的bsv数量
+   */
   constructor({ scriptCode, dataType, ownerPkh, tokenId, codeWithGenesisPartHashSwap, amountSwap, satoshiAmountSell }) {
-    /* 数据类型，1字节 */
     this.dataType = dataType;
-
-    /* 数据 */
-    this.ownerPkh = ownerPkh; // Ripemd160
+    this.ownerPkh = ownerPkh;
     this.tokenId = tokenId;
-
-    /* swap 数据 */
-    this.codeWithGenesisPartHashSwap = codeWithGenesisPartHashSwap; // Sha256
+    this.codeWithGenesisPartHashSwap = codeWithGenesisPartHashSwap;
     this.amountSwap = amountSwap;
-
-    /* sell 数据 */
-    this.satoshiAmountSell = satoshiAmountSell; // number
+    this.satoshiAmountSell = satoshiAmountSell;
   }
 
   dump() {

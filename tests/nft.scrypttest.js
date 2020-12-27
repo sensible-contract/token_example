@@ -9,7 +9,6 @@ const dummyPublicKey = bsv.PublicKey.fromPrivateKey(privateKey);
 const dummyPkh = bsv.crypto.Hash.sha256ripemd160(dummyPublicKey.toBuffer());
 
 describe("Test sCrypt contract NFT In Javascript", () => {
-  /* 02fac240917b1bc22871af783b9a958661bc2b497b27f571a32fe6988e8ad2b38f */
   // const privateKey1 = new bsv.PrivateKey.fromRandom('testnet')
   const issuerPrivKey = new bsv.PrivateKey.fromWIF("cPbFsSjFjCbfzTRc8M4nKNGhVJspwnPQAcDhdJgVr3Pdwpqq7LfA");
   const publicKeyIssuer = bsv.PublicKey.fromPrivateKey(issuerPrivKey);
@@ -39,24 +38,26 @@ describe("Test sCrypt contract NFT In Javascript", () => {
   it("should succeed when one new token is issued", async () => {
     /**
      * 测试issue，先从0开始创建一连串的Tx，直到创建出包含`Issue`类型数据的锁定脚本；然后调用合约的unlock创建解锁脚本；
-     * 即可测试合约或发布被解锁的合约Tx
+     * 即可测试合约，或发布被解锁的合约Tx
      *
      * * 创建Genesis之前的Tx
      * * 再创建Genesis Tx
      * * 然后创建Issue Tx
      * * 最后解锁Issue Tx
      *
-     * @param {PrivateKey} privKeyIssuer 发行人私钥
-     * @param {Ripemd160} pkhGenesisIssuer 初始设置的发行人
-     * @param {Ripemd160} pkhNewReceiver 新token的接收人
-     * @param {Ripemd160} pkhNewIssuer issue合约内新产生的发行人，应当和pkhGenesisIssuer一致
-     * @param {number} nextTokenId issue合约内新产生的tokenId
-     * @param {Boolean} followGenesis 测试用，issue合约内utxo是否和Genesis outpoint一致
+     * @param {Object} params
+     * @param {PrivateKey} params.privKeyIssuer 发行人私钥
+     * @param {Ripemd160} params.pkhGenesisIssuer 初始设置的发行人
+     * @param {Ripemd160} params.pkhNewReceiver 新token的接收人
+     * @param {Ripemd160} params.pkhNewIssuer issue合约内新产生的发行人，应当和pkhGenesisIssuer一致
+     * @param {number} params.nextTokenId issue合约内新产生的tokenId
+     * @param {Boolean} params.followGenesis 测试用，issue合约内utxo是否和Genesis outpoint一致
      */
-    function testIssue(privKeyIssuer, pkhGenesisIssuer, pkhNewReceiver, pkhNewIssuer, nextTokenId, followGenesis) {
+    function testIssue({ privKeyIssuer, pkhGenesisIssuer, pkhNewReceiver, pkhNewIssuer, nextTokenId, followGenesis }) {
       let prevPrevTxId;
       let prevPrevTxHex;
 
+      /* 创建genesis之前的Tx */
       if (followGenesis != true) {
         let fakeTxP2pk = nft.makeTxP2pk({ outputSatoshis: 200000000 });
         prevPrevTxId = fakeTxP2pk.id;
@@ -71,6 +72,7 @@ describe("Test sCrypt contract NFT In Javascript", () => {
         prevPrevTxHex = txP2pk.serialize();
       }
 
+      /* 创建genesis Tx */
       let txGenesis = nft.makeTxGenesis({
         prevTxId: genesisOutpointTxId,
         outputIndex: 0,
@@ -78,6 +80,7 @@ describe("Test sCrypt contract NFT In Javascript", () => {
         outputTokenId: currTokenId,
       });
 
+      /* 创建Issue Tx */
       let txIssue = nft.makeTxIssue(
         {
           prevTxId: txGenesis.id,
@@ -92,6 +95,7 @@ describe("Test sCrypt contract NFT In Javascript", () => {
         }
       );
 
+      /* 解锁Issue Tx */
       return nft.unlockTxIssue(
         {
           txIssue: txIssue,
@@ -114,27 +118,55 @@ describe("Test sCrypt contract NFT In Javascript", () => {
       );
     }
 
-    let verifyData = await testIssue(issuerPrivKey, issuerPkh, receiver1Pkh, issuerPkh, currTokenId + 1, true);
+    /* 先正常成功测试 */
+    let verifyData = await testIssue({
+      privKeyIssuer: issuerPrivKey,
+      pkhGenesisIssuer: issuerPkh,
+      pkhNewReceiver: receiver1Pkh,
+      pkhNewIssuer: issuerPkh,
+      nextTokenId: currTokenId + 1,
+      followGenesis: true,
+    });
     let result = verifyData.verify();
     expect(result.success, result.error).to.be.true;
+
+    // 再始测试各种情况
 
     // // copy utxo must fail
     // verifyData = await testIssue(issuerPrivKey, issuerPkh, receiver1Pkh, issuerPkh, currTokenId + 1, false);
     // result = verifyData.verify();
     // expect(result.success, result.error).to.be.false;
 
-    // issuer must not change
-    verifyData = await testIssue(issuerPrivKey, issuerPkh, receiver1Pkh, receiver1Pkh, currTokenId + 1, true);
+    verifyData = await testIssue({
+      privKeyIssuer: issuerPrivKey,
+      pkhGenesisIssuer: issuerPkh,
+      pkhNewReceiver: receiver1Pkh,
+      pkhNewIssuer: receiver1Pkh, // issuer must not change
+      nextTokenId: currTokenId + 1,
+      followGenesis: true,
+    });
     result = verifyData.verify();
     expect(result.success, result.error).to.be.false;
 
-    // unauthorized key
-    verifyData = await testIssue(receiver1PrivKey, issuerPkh, receiver1Pkh, issuerPkh, currTokenId + 1, true);
+    verifyData = await testIssue({
+      privKeyIssuer: receiver1PrivKey, // unauthorized key
+      pkhGenesisIssuer: issuerPkh,
+      pkhNewReceiver: receiver1Pkh,
+      pkhNewIssuer: issuerPkh,
+      nextTokenId: currTokenId + 1,
+      followGenesis: true,
+    });
     result = verifyData.verify();
     expect(result.success, result.error).to.be.false;
 
-    // mismatched next token ID
-    verifyData = await testIssue(issuerPrivKey, issuerPkh, receiver1Pkh, issuerPkh, currTokenId + 2, true);
+    verifyData = await testIssue({
+      privKeyIssuer: issuerPrivKey,
+      pkhGenesisIssuer: issuerPkh,
+      pkhNewReceiver: receiver1Pkh,
+      pkhNewIssuer: issuerPkh,
+      nextTokenId: currTokenId + 2, // mismatched next token ID
+      followGenesis: true,
+    });
     result = verifyData.verify();
     expect(result.success, result.error).to.be.false;
   });
@@ -150,20 +182,23 @@ describe("Test sCrypt contract NFT In Javascript", () => {
      * * 然后创建Transfer Tx
      * * 最后解锁Transfer Tx
      *
-     * @param {PrivateKey} privKeyIssue 发行人私钥
-     * @param {PrivateKey} privKeyTransfer 接收人私钥
-     * @param {Ripemd160} pkhGenesisIssuer 初始设置的发行人
-     * @param {Ripemd160} pkhNewIssuer issue合约内新产生的发行人，应当和pkhGenesisIssuer一致
-     * @param {Ripemd160} pkhOwner1 接收人1
-     * @param {Ripemd160} pkhOwner2 接收人2
-     * @param {Pubkey} pkOwner1 接收人1的公钥
-     * @param {number} transTokenId 被trans的tokenId
+     * @param {Object} params
+     * @param {PrivateKey} params.privKeyIssue 发行人私钥
+     * @param {PrivateKey} params.privKeyTransfer 接收人私钥
+     * @param {Ripemd160} params.pkhGenesisIssuer 初始设置的发行人
+     * @param {Ripemd160} params.pkhNewIssuer issue合约内新产生的发行人，应当和pkhGenesisIssuer一致
+     * @param {Ripemd160} params.pkhOwner1 接收人1
+     * @param {Ripemd160} params.pkhOwner2 接收人2
+     * @param {Pubkey} params.pkOwner1 接收人1的公钥
+     * @param {number} params.transTokenId 被trans的tokenId
      */
-    function testTransfer(privKeyIssue, privKeyTransfer, pkhGenesisIssuer, pkhNewIssuer, pkhOwner1, pkhOwner2, pkOwner1, transTokenId) {
+    function testTransfer({ privKeyIssue, privKeyTransfer, pkhGenesisIssuer, pkhNewIssuer, pkhOwner1, pkhOwner2, pkOwner1, transTokenId }) {
+      // 创建Genesis之前的Tx
       let txP2pk = nft.makeTxP2pk({ outputSatoshis: 100000000 });
       let genesisOutpointTxId = txP2pk.id;
       let genesisPreTxHex = txP2pk.serialize();
 
+      // 再创建Genesis Tx
       let txGenesis = nft.makeTxGenesis({
         prevTxId: genesisOutpointTxId,
         outputIndex: 0,
@@ -171,6 +206,7 @@ describe("Test sCrypt contract NFT In Javascript", () => {
         outputTokenId: currTokenId,
       });
 
+      // 然后创建Issue Tx
       let txIssue = nft.makeTxIssue(
         {
           prevTxId: txGenesis.id,
@@ -185,6 +221,7 @@ describe("Test sCrypt contract NFT In Javascript", () => {
         }
       );
 
+      // 然后创建Transfer Tx
       let txTransfer = nft.makeTxTransfer(
         {
           prevTxId: txIssue.id,
@@ -199,6 +236,7 @@ describe("Test sCrypt contract NFT In Javascript", () => {
         }
       );
 
+      // 最后解锁Transfer Tx
       return nft.unlockTxTransfer(
         {
           txTransfer: txTransfer,
@@ -221,17 +259,44 @@ describe("Test sCrypt contract NFT In Javascript", () => {
       );
     }
 
-    let verifyData = await testTransfer(issuerPrivKey, receiver1PrivKey, issuerPkh, issuerPkh, receiver1Pkh, issuerPkh, receiver1Pk, currTokenId + 1);
+    /* 先正常成功测试 */
+    let verifyData = await testTransfer({
+      privKeyIssue: issuerPrivKey,
+      privKeyTransfer: receiver1PrivKey,
+      pkhGenesisIssuer: issuerPkh,
+      pkhNewIssuer: issuerPkh,
+      pkhOwner1: receiver1Pkh,
+      pkhOwner2: issuerPkh,
+      pkOwner1: receiver1Pk,
+      transTokenId: currTokenId + 1,
+    });
     let result = verifyData.verify();
     expect(result.success, result.error).to.be.true;
 
-    // unauthorized key
-    verifyData = await testTransfer(issuerPrivKey, issuerPrivKey, issuerPkh, issuerPkh, receiver1Pkh, issuerPkh, receiver1Pk, currTokenId + 1);
+    // 再始测试各种情况
+    verifyData = await testTransfer({
+      privKeyIssue: issuerPrivKey,
+      privKeyTransfer: issuerPrivKey, // unauthorized key
+      pkhGenesisIssuer: issuerPkh,
+      pkhNewIssuer: issuerPkh,
+      pkhOwner1: receiver1Pkh,
+      pkhOwner2: issuerPkh,
+      pkOwner1: receiver1Pk,
+      transTokenId: currTokenId + 1,
+    });
     result = verifyData.verify();
     expect(result.success, result.error).to.be.false;
 
-    // token ID must not change
-    verifyData = await testTransfer(issuerPrivKey, receiver1PrivKey, issuerPkh, issuerPkh, receiver1Pkh, issuerPkh, receiver1Pk, currTokenId + 2);
+    verifyData = await testTransfer({
+      privKeyIssue: issuerPrivKey,
+      privKeyTransfer: receiver1PrivKey,
+      pkhGenesisIssuer: issuerPkh,
+      pkhNewIssuer: issuerPkh,
+      pkhOwner1: receiver1Pkh,
+      pkhOwner2: issuerPkh,
+      pkOwner1: receiver1Pk,
+      transTokenId: currTokenId + 2, // token ID must not change
+    });
     result = verifyData.verify();
     expect(result.success, result.error).to.be.false;
   });
@@ -247,17 +312,20 @@ describe("Test sCrypt contract NFT In Javascript", () => {
      * * 然后创建Burn Tx
      * * 最后解锁Burn Tx
      *
-     * @param {PrivateKey} privKeyTransfer 接收人私钥
-     * @param {Ripemd160} pkhGenesisIssuer 初始设置的发行人
-     * @param {Ripemd160} pkhNewIssuer issue合约内新产生的发行人，应当和pkhGenesisIssuer一致
-     * @param {Ripemd160} pkhOwner 接收人
-     * @param {Pubkey} pkOwner 接收人公钥
-     * @param {number} transferTokenId 被销毁的tokenId
+     * @param {Object} params
+     * @param {PrivateKey} params.privKeyTransfer 接收人私钥
+     * @param {Ripemd160} params.pkhGenesisIssuer 初始设置的发行人
+     * @param {Ripemd160} params.pkhNewIssuer issue合约内新产生的发行人，应当和pkhGenesisIssuer一致
+     * @param {Ripemd160} params.pkhOwner 接收人
+     * @param {Pubkey} params.pkOwner 接收人公钥
+     * @param {number} params.transferTokenId 被销毁的tokenId
      */
-    function testBurn(privKeyTransfer, pkhGenesisIssuer, pkhNewIssuer, pkhOwner, pkOwner, transferTokenId) {
+    function testBurn({ privKeyTransfer, pkhGenesisIssuer, pkhNewIssuer, pkhOwner, pkOwner, transferTokenId }) {
+      // 创建Genesis之前的Tx
       let txP2pk = nft.makeTxP2pk({ outputSatoshis: 100000000 });
       let genesisOutpointTxId = txP2pk.id;
 
+      // 再创建Genesis Tx
       let txGenesis = nft.makeTxGenesis({
         prevTxId: genesisOutpointTxId,
         outputIndex: 0,
@@ -265,6 +333,7 @@ describe("Test sCrypt contract NFT In Javascript", () => {
         outputTokenId: currTokenId,
       });
 
+      // 然后创建Issue Tx
       let txIssue = nft.makeTxIssue(
         {
           prevTxId: txGenesis.id,
@@ -279,6 +348,7 @@ describe("Test sCrypt contract NFT In Javascript", () => {
         }
       );
 
+      // 然后创建Burn Tx
       let txTransferBurn = nft.makeTxTransferBurn(
         {
           prevTxId: txIssue.id,
@@ -291,6 +361,7 @@ describe("Test sCrypt contract NFT In Javascript", () => {
         }
       );
 
+      // 最后解锁Burn Tx
       return nft.unlockTxTransferBurn(
         {
           txTransferBurn: txTransferBurn,
@@ -305,7 +376,15 @@ describe("Test sCrypt contract NFT In Javascript", () => {
       );
     }
 
-    let verifyData = await testBurn(receiver1PrivKey, issuerPkh, issuerPkh, receiver1Pkh, receiver1Pk, currTokenId + 1);
+    /* 先正常成功测试 */
+    let verifyData = await testBurn({
+      privKeyTransfer: receiver1PrivKey,
+      pkhGenesisIssuer: issuerPkh,
+      pkhNewIssuer: issuerPkh,
+      pkhOwner: receiver1Pkh,
+      pkOwner: receiver1Pk,
+      transferTokenId: currTokenId + 1,
+    });
     let result = verifyData.verify();
     expect(result.success, result.error).to.be.true;
   });
