@@ -1,8 +1,8 @@
 const { expect } = require("chai");
 const { bsv, toHex } = require("scryptlib");
-const { NFT } = require("../../forge/nft");
+const { NFT } = require("../forge/nft");
 
-const { privateKey } = require("../../privateKey");
+const { privateKey } = require("../privateKey");
 
 const dummyAddress = privateKey.toAddress();
 const dummyPublicKey = bsv.PublicKey.fromPrivateKey(privateKey);
