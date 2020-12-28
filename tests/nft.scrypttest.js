@@ -1,4 +1,5 @@
 const { expect } = require("chai");
+const _ = require("lodash");
 const { bsv, toHex } = require("scryptlib");
 const { NFT } = require("../forge/nft");
 
@@ -121,7 +122,6 @@ describe("Test sCrypt contract NFT In Javascript", () => {
       );
     }
 
-    /* 先正常成功测试 */
     /**
      * @type {IssueParams}
      */
@@ -133,41 +133,43 @@ describe("Test sCrypt contract NFT In Javascript", () => {
       nextTokenId: currTokenId + 1,
       followGenesis: true,
     };
-    let verifyData = await testIssue(params);
-    let result = verifyData.verify();
-    expect(result.success, result.error).to.be.true;
+    let testCaseParams = [];
 
+    /* 先正常成功测试 */    
+    let params0 = _.cloneDeep(params);
+    testCaseParams.push(params0)
+    
     // 再始测试各种情况
-
     // // copy utxo must fail
     // verifyData = await testIssue(issuerPrivKey, issuerPkh, receiver1Pkh, issuerPkh, currTokenId + 1, false);
     // result = verifyData.verify();
     // expect(result.success, result.error).to.be.false;
 
     // issuer must not change
-    params.pkhNewIssuer = receiver1Pkh;
-    verifyData = await testIssue(params);
-    result = verifyData.verify();
-    expect(result.success, result.error).to.be.false;
-    // restore
-    params.pkhNewIssuer = issuerPkh;
+    let params1 = _.cloneDeep(params);
+    params1.pkhNewIssuer = receiver1Pkh;
+    testCaseParams.push(params1)
 
     // unauthorized key
-    params.privKeyIssuer = receiver1PrivKey;
-    verifyData = await testIssue(params);
-    result = verifyData.verify();
-    expect(result.success, result.error).to.be.false;
-    // restore
-    params.privKeyIssuer = issuerPrivKey;
+    let params2 = _.cloneDeep(params);
+    params2.privKeyIssuer = receiver1PrivKey;
+    testCaseParams.push(params2)
 
     // mismatched next token ID
-    params.nextTokenId = currTokenId + 2;
-    verifyData = await testIssue(params);
-    result = verifyData.verify();
-    expect(result.success, result.error).to.be.false;
-    // restore
-    params.nextTokenId = currTokenId + 1;
+    let params3 = _.cloneDeep(params);
+    params3.nextTokenId = currTokenId + 2;
+    testCaseParams.push(params3)
 
+    // test
+    for (let idx = 0; idx < testCaseParams.length; idx++) {
+      let verifyData = await testIssue(testCaseParams[idx]);
+      let result = verifyData.verify();
+      if (idx == 0) {
+        expect(result.success, result.error).to.be.true;
+      } else {
+        expect(result.success, result.error).to.be.false;
+      }
+    }
   });
 
   it("should succeed when a token is transferred", async () => {
