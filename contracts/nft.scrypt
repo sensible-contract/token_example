@@ -127,13 +127,13 @@ contract NFT {
     require(hashOutputs == Util.hashOutputs(txPreimage));
   }
 
-  /** 
+  /**
    * user A make swap for token
    * makeSwapToken:
    *   codePartA, GenesisPartA, ownerPkhA, tokenId, TRANSFER
    *    ->
    *   codePartA, GenesisPartA, ownerPkhA, tokenId, hash256(codePartB + GenesisPartB), tokenAmountB, SWAP
-   * 
+   *
    */
   public function makeSwapToken(SigHashPreimage txPreimage,
     int preTxOutpointSig, bytes preTxOutpointMsg, bytes preTxOutpointPadding,
@@ -179,7 +179,7 @@ contract NFT {
     require(hashOutputs == Util.hashOutputs(txPreimage));
   }
 
-  /** 
+  /**
    * user A cancel swap token
    * cancelSwapToken:
    *   codePartA, GenesisPartA, ownerPkhA, tokenId, hash256(codePartB + GenesisPartB), tokenAmountB, SWAP
@@ -224,7 +224,7 @@ contract NFT {
     require(hashOutputs == Util.hashOutputs(txPreimage));
   }
 
-  /** 
+  /**
    * user A finish swap
    * 此Tx涉及2种不同合约的执行，其中各合约执行各自的解锁函数，相互配合。
    * finishSwapToken:
@@ -286,20 +286,20 @@ contract NFT {
     require(hashOutputs == Util.hashOutputs(txPreimage));
   }
 
-  /** 
+  /**
    * user A sell
    * sell:
    *   codePart, GenesisPart, ownerPkhA, tokenId, TRANSFER
    *    ->
-   *   codePart, GenesisPart, ownerPkhA, tokenId, satoshiAmount, SELL
+   *   codePart, GenesisPart, ownerPkhA, tokenId, satoshiAmountSell, SELL
    */
   public function sell(SigHashPreimage txPreimage,
     int preTxOutpointSig, bytes preTxOutpointMsg, bytes preTxOutpointPadding,
     Sig ownerSig, PubKey owner,
-    int satoshAmountSell,
+    int satoshiAmountSell,
     Ripemd160 changePkh, int satoshiAmount) {
 
-    require(satoshAmountSell > 0);
+    require(satoshiAmountSell > 0);
 
     SigHashType sigHashType = SigHash.ANYONECANPAY | SigHash.ALL | SigHash.FORKID;
     // this ensures the preimage is for the current tx
@@ -323,7 +323,7 @@ contract NFT {
     int satoshiBefore = Util.value(txPreimage);
 
     // 业务操作
-    pl.satoshiAmountSell = satoshAmountSell;
+    pl.satoshiAmountSell = satoshiAmountSell;
     pl.dataType = PayloadNFT.SELL;
     bytes outputScript0 = pl.dump();
     bytes output0 = Util.buildOutput(outputScript0, satoshiBefore);
@@ -335,7 +335,7 @@ contract NFT {
     require(hashOutputs == Util.hashOutputs(txPreimage));
   }
 
-  /** 
+  /**
    * user A cancel sell
    * sell:
    *   codePart, GenesisPart, ownerPkhA, tokenId, satoshiAmount, SELL
@@ -380,7 +380,7 @@ contract NFT {
     require(hashOutputs == Util.hashOutputs(txPreimage));
   }
 
-  /** 
+  /**
    * user B buy
    * buy:
    *   codePart, GenesisPart, ownerPkhA, tokenId, satoshiAmount, SELL
@@ -419,11 +419,11 @@ contract NFT {
     bytes outputScript0 = pl.dump();
     bytes output0 = Util.buildOutput(outputScript0, satoshiAmount0);
 
-    bytes outputScript1 = Util.buildPublicKeyHashScript(changePkh);
-    bytes output1 = Util.buildOutput(outputScript1, satoshiAmount1);
+    bytes outputScript1 = Util.buildPublicKeyHashScript(sellerPkh);
+    bytes output1 = Util.buildOutput(outputScript1, pl.satoshiAmountSell + satoshiBefore);
 
-    bytes outputScript2 = Util.buildPublicKeyHashScript(sellerPkh);
-    bytes output2 = Util.buildOutput(outputScript2, pl.satoshiAmountSell + satoshiBefore);
+    bytes outputScript2 = Util.buildPublicKeyHashScript(changePkh);
+    bytes output2 = Util.buildOutput(outputScript2, satoshiAmount1);
 
     Sha256 hashOutputs = hash256(output0 + output1 + output2);
     require(hashOutputs == Util.hashOutputs(txPreimage));

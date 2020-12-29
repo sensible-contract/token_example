@@ -32,137 +32,122 @@ describe("Test sCrypt contract NFT In Javascript", () => {
   console.log(`address: '${receiver2PrivKey.toAddress()}'`);
 
   let nft = new NFT();
-  const currTokenId = 0;
 
   before(() => {});
 
+  const currTokenId = 0;
+
+  // 创建Genesis之前的Tx
+  let txP2pk = nft.makeTxP2pk({ outputSatoshis: 100000000 });
+  let genesisOutpointTxId = txP2pk.id;
+  let genesisPreTxHex = txP2pk.serialize();
+
+  // 再创建Genesis Tx
+  let txGenesis = nft.makeTxGenesis({
+    prevTxId: genesisOutpointTxId,
+    outputIndex: 0,
+    outputIssuerPkh: issuerPkh,
+    outputTokenId: currTokenId,
+  });
+
+  // 然后创建Issue Tx
+  let txIssue = nft.makeTxIssue(
+    {
+      prevTxId: txGenesis.id,
+      outputIndex: 0,
+      outputOwnerPkh: receiver1Pkh,
+      changeAddress: dummyAddress,
+    },
+    {
+      inputIssuerPkh: issuerPkh,
+      inputTokenId: currTokenId,
+      outputTokenId: currTokenId + 1,
+    }
+  );
+
+  // 或者创建Transfer Tx
+  let txTransfer = nft.makeTxTransfer(
+    {
+      prevTxId: txIssue.id,
+      outputIndex: 1,
+      outputOwnerPkh: receiver2Pkh,
+      changeAddress: dummyAddress,
+    },
+    {
+      inputOwnerPkh: receiver1Pkh,
+      inputTokenId: currTokenId + 1,
+      outputTokenId: currTokenId + 1,
+    }
+  );
+
+  // 或者创建Burn Tx
+  let txTransferBurn = nft.makeTxTransferBurn(
+    {
+      prevTxId: txIssue.id,
+      outputIndex: 1,
+      changeAddress: dummyAddress,
+    },
+    {
+      inputOwnerPkh: receiver1Pkh,
+      inputTokenId: currTokenId + 1,
+    }
+  );
+
   it("should succeed when one new token is issued", async () => {
     /**
-     * @typedef {Object} IssueParams
-     * @property {PrivateKey} privKeyIssuer 发行人私钥
-     * @property {Ripemd160} pkhGenesisIssuer 初始设置的发行人
-     * @property {Ripemd160} pkhNewReceiver 新token的接收人
-     * @property {Ripemd160} pkhNewIssuer issue合约内新产生的发行人，应当和pkhGenesisIssuer一致
-     * @property {number} nextTokenId issue合约内新产生的tokenId
-     * @property {Boolean} followGenesis 测试用，issue合约内utxo是否和Genesis outpoint一致
+     * @type {IssueEnvs}
      */
-    /**
-     * 测试issue，先从0开始创建一连串的Tx，直到创建出包含`Issue`类型数据的锁定脚本；然后调用合约的unlock创建解锁脚本；
-     * 即可测试合约，或发布被解锁的合约Tx
-     *
-     * * 创建Genesis之前的Tx
-     * * 再创建Genesis Tx
-     * * 然后创建Issue Tx
-     * * 最后解锁Issue Tx
-     *
-     * @param {IssueParams} params
-     */
-    function testIssue({ privKeyIssuer, pkhGenesisIssuer, pkhNewReceiver, pkhNewIssuer, nextTokenId, followGenesis }) {
-      let prevPrevTxId;
-      let prevPrevTxHex;
+    let envs = {
+      privKeyIssuer: issuerPrivKey,
+      publicKeyIssuer: publicKeyIssuer,
+      inputIssuerPkh: issuerPkh,
+      inputTokenId: currTokenId,
+    };
+    let testCaseEnvs = [];
 
-      /* 创建genesis之前的Tx */
-      if (followGenesis != true) {
-        let fakeTxP2pk = nft.makeTxP2pk({ outputSatoshis: 200000000 });
-        prevPrevTxId = fakeTxP2pk.id;
-        prevPrevTxHex = fakeTxP2pk.serialize();
-      }
+    /* 先正常成功测试 */
+    let envs0 = _.cloneDeep(envs);
+    testCaseEnvs.push(envs0);
 
-      let txP2pk = nft.makeTxP2pk({ outputSatoshis: 100000000 });
-      let genesisOutpointTxId = txP2pk.id;
-      let genesisPreTxHex = txP2pk.serialize();
-      if (followGenesis) {
-        prevPrevTxId = txP2pk.id;
-        prevPrevTxHex = txP2pk.serialize();
-      }
+    // 再始测试各种情况
 
-      /* 创建genesis Tx */
-      let txGenesis = nft.makeTxGenesis({
-        prevTxId: genesisOutpointTxId,
-        outputIndex: 0,
-        outputIssuerPkh: pkhGenesisIssuer,
-        outputTokenId: currTokenId,
-      });
+    // // copy utxo must fail
+    // result = verifyData.verify();
+    // expect(result.success, result.error).to.be.false;
 
-      /* 创建Issue Tx */
-      let txIssue = nft.makeTxIssue(
-        {
-          prevTxId: txGenesis.id,
-          outputIndex: 0,
-          outputOwnerPkh: pkhNewReceiver,
-          changeAddress: dummyAddress,
-        },
-        {
-          inputIssuerPkh: pkhNewIssuer,
-          inputTokenId: currTokenId,
-          outputTokenId: nextTokenId,
-        }
-      );
+    // issuer must not change
+    let envs1 = _.cloneDeep(envs);
+    envs1.inputIssuerPkh = receiver1Pkh;
+    testCaseEnvs.push(envs1);
 
-      /* 解锁Issue Tx */
-      return nft.unlockTxIssue(
+    // unauthorized key
+    let envs2 = _.cloneDeep(envs);
+    envs2.privKeyIssuer = receiver1PrivKey;
+    testCaseEnvs.push(envs2);
+
+    // mismatched next token ID
+    let envs3 = _.cloneDeep(envs);
+    envs3.inputTokenId = currTokenId + 2;
+    testCaseEnvs.push(envs3);
+
+    // test
+    for (let idx = 0; idx < testCaseEnvs.length; idx++) {
+      let verifyData = await nft.unlockTxIssue(
         {
           txIssue: txIssue,
           outputReceiverPkh: receiver1Pkh,
           changePkh: dummyPkh,
         },
-        {
-          privKeyIssuer: privKeyIssuer,
-          publicKeyIssuer: publicKeyIssuer,
-          inputIssuerPkh: pkhGenesisIssuer,
-          inputTokenId: currTokenId,
-        },
+        testCaseEnvs[idx],
         {
           preTxId: txGenesis.id,
           preTxHex: txGenesis.serialize(),
-          prevPrevTxId: prevPrevTxId,
+          prevPrevTxId: genesisOutpointTxId,
           prevPrevOutputIndex: 0,
-          prevPrevTxHex: prevPrevTxHex,
+          prevPrevTxHex: genesisPreTxHex,
         }
       );
-    }
 
-    /**
-     * @type {IssueParams}
-     */
-    let params = {
-      privKeyIssuer: issuerPrivKey,
-      pkhGenesisIssuer: issuerPkh,
-      pkhNewReceiver: receiver1Pkh,
-      pkhNewIssuer: issuerPkh,
-      nextTokenId: currTokenId + 1,
-      followGenesis: true,
-    };
-    let testCaseParams = [];
-
-    /* 先正常成功测试 */    
-    let params0 = _.cloneDeep(params);
-    testCaseParams.push(params0)
-    
-    // 再始测试各种情况
-    // // copy utxo must fail
-    // verifyData = await testIssue(issuerPrivKey, issuerPkh, receiver1Pkh, issuerPkh, currTokenId + 1, false);
-    // result = verifyData.verify();
-    // expect(result.success, result.error).to.be.false;
-
-    // issuer must not change
-    let params1 = _.cloneDeep(params);
-    params1.pkhNewIssuer = receiver1Pkh;
-    testCaseParams.push(params1)
-
-    // unauthorized key
-    let params2 = _.cloneDeep(params);
-    params2.privKeyIssuer = receiver1PrivKey;
-    testCaseParams.push(params2)
-
-    // mismatched next token ID
-    let params3 = _.cloneDeep(params);
-    params3.nextTokenId = currTokenId + 2;
-    testCaseParams.push(params3)
-
-    // test
-    for (let idx = 0; idx < testCaseParams.length; idx++) {
-      let verifyData = await testIssue(testCaseParams[idx]);
       let result = verifyData.verify();
       if (idx == 0) {
         expect(result.success, result.error).to.be.true;
@@ -174,86 +159,41 @@ describe("Test sCrypt contract NFT In Javascript", () => {
 
   it("should succeed when a token is transferred", async () => {
     /**
-     * @typedef {Object} TransParams
-     *
-     * @property {PrivateKey} privKeyIssue 发行人私钥
-     * @property {PrivateKey} privKeyTransfer 接收人私钥
-     * @property {Ripemd160} pkhGenesisIssuer 初始设置的发行人
-     * @property {Ripemd160} pkhNewIssuer issue合约内新产生的发行人，应当和pkhGenesisIssuer一致
-     * @property {Ripemd160} pkhOwner1 接收人1
-     * @property {Ripemd160} pkhOwner2 接收人2
-     * @property {Pubkey} pkOwner1 接收人1的公钥
-     * @property {number} transTokenId 被trans的tokenId
+     * @type {TransEnvs}
      */
-    /**
-     * 测试transfer，先从0开始创建一连串的Tx，直到创建出包含`Transfer`类型数据的锁定脚本；然后调用合约的unlock创建解锁脚本；
-     * 即可测试合约或发布被解锁的合约Tx
-     *
-     * * 创建Genesis之前的Tx
-     * * 再创建Genesis Tx
-     * * 然后创建Issue Tx
-     * * 然后创建Transfer Tx
-     * * 最后解锁Transfer Tx
-     *
-     * @param {TransParams} params
-     */
-    function testTransfer({ privKeyIssue, privKeyTransfer, pkhGenesisIssuer, pkhNewIssuer, pkhOwner1, pkhOwner2, pkOwner1, transTokenId }) {
-      // 创建Genesis之前的Tx
-      let txP2pk = nft.makeTxP2pk({ outputSatoshis: 100000000 });
-      let genesisOutpointTxId = txP2pk.id;
-      let genesisPreTxHex = txP2pk.serialize();
+    let envs = {
+      privKeyTransfer: receiver1PrivKey,
+      inputOwnerPkh: receiver1Pkh,
+      inputOwnerPk: receiver1Pk,
+      inputTokenId: currTokenId + 1,
+    };
 
-      // 再创建Genesis Tx
-      let txGenesis = nft.makeTxGenesis({
-        prevTxId: genesisOutpointTxId,
-        outputIndex: 0,
-        outputIssuerPkh: pkhGenesisIssuer,
-        outputTokenId: currTokenId,
-      });
+    let testCaseEnvs = [];
 
-      // 然后创建Issue Tx
-      let txIssue = nft.makeTxIssue(
-        {
-          prevTxId: txGenesis.id,
-          outputIndex: 0,
-          outputOwnerPkh: pkhOwner1,
-          changeAddress: dummyAddress,
-        },
-        {
-          inputIssuerPkh: pkhNewIssuer,
-          inputTokenId: currTokenId,
-          outputTokenId: currTokenId + 1,
-        }
-      );
+    /* 先正常成功测试 */
+    let envs0 = _.cloneDeep(envs);
+    testCaseEnvs.push(envs0);
 
-      // 然后创建Transfer Tx
-      let txTransfer = nft.makeTxTransfer(
-        {
-          prevTxId: txIssue.id,
-          outputIndex: 1,
-          outputOwnerPkh: pkhOwner2,
-          changeAddress: dummyAddress,
-        },
-        {
-          inputOwnerPkh: pkhOwner1,
-          inputTokenId: currTokenId + 1,
-          outputTokenId: transTokenId,
-        }
-      );
+    // 再始测试各种情况
+    // unauthorized key
+    let envs1 = _.cloneDeep(envs);
+    envs1.privKeyTransfer = receiver2PrivKey;
+    testCaseEnvs.push(envs1);
 
-      // 最后解锁Transfer Tx
-      return nft.unlockTxTransfer(
+    // token ID must not change
+    let envs2 = _.cloneDeep(envs);
+    envs2.inputTokenId = currTokenId + 2;
+    testCaseEnvs.push(envs2);
+
+    // test
+    for (let idx = 0; idx < testCaseEnvs.length; idx++) {
+      let verifyData = await nft.unlockTxTransfer(
         {
           txTransfer: txTransfer,
-          outputOwnerPkh: pkhOwner2,
+          outputOwnerPkh: receiver2Pkh,
           changePkh: dummyPkh,
         },
-        {
-          privKeyTransfer: privKeyTransfer,
-          inputOwnerPkh: pkhOwner1,
-          inputOwnerPk: pkOwner1,
-          inputTokenId: currTokenId + 1,
-        },
+        testCaseEnvs[idx],
         {
           preTxId: txIssue.id,
           preTxHex: txIssue.serialize(),
@@ -262,132 +202,31 @@ describe("Test sCrypt contract NFT In Javascript", () => {
           prevPrevTxHex: txGenesis.serialize(),
         }
       );
+
+      let result = verifyData.verify();
+      if (idx == 0) {
+        expect(result.success, result.error).to.be.true;
+      } else {
+        expect(result.success, result.error).to.be.false;
+      }
     }
-
-    /* 先正常成功测试 */
-    /**
-     * @type {TransParams}
-     */
-    let params = {
-      privKeyIssue: issuerPrivKey,
-      privKeyTransfer: receiver1PrivKey,
-      pkhGenesisIssuer: issuerPkh,
-      pkhNewIssuer: issuerPkh,
-      pkhOwner1: receiver1Pkh,
-      pkhOwner2: issuerPkh,
-      pkOwner1: receiver1Pk,
-      transTokenId: currTokenId + 1,
-    };
-    let verifyData = await testTransfer(params);
-    let result = verifyData.verify();
-    expect(result.success, result.error).to.be.true;
-
-    // 再始测试各种情况
-    // unauthorized key
-    params.privKeyTransfer = issuerPrivKey;
-    verifyData = await testTransfer(params);
-    result = verifyData.verify();
-    expect(result.success, result.error).to.be.false;
-    // restore
-    params.privKeyTransfer = receiver1PrivKey;
-
-    // token ID must not change
-    params.transTokenId = currTokenId + 2;
-    verifyData = await testTransfer(params);
-    result = verifyData.verify();
-    expect(result.success, result.error).to.be.false;
-    // restore
-    params.transTokenId = currTokenId + 1;
   });
 
   it("should success when receiver burn the token", async () => {
-    /**
-     * @typedef {Object} BurnParams
-     *
-     * @property {PrivateKey} privKeyTransfer 接收人私钥
-     * @property {Ripemd160} pkhGenesisIssuer 初始设置的发行人
-     * @property {Ripemd160} pkhNewIssuer issue合约内新产生的发行人，应当和pkhGenesisIssuer一致
-     * @property {Ripemd160} pkhOwner 接收人
-     * @property {Pubkey} pkOwner 接收人公钥
-     * @property {number} transferTokenId 被销毁的tokenId
-     */
-    /**
-     * 测试burn，先从0开始创建一连串的Tx，直到创建出包含`Transfer`类型数据的锁定脚本；然后调用合约的unlock创建解锁脚本；
-     * 即可测试合约或发布被解锁的合约Tx
-     *
-     * * 创建Genesis之前的Tx
-     * * 再创建Genesis Tx
-     * * 然后创建Issue Tx
-     * * 然后创建Burn Tx
-     * * 最后解锁Burn Tx
-     *
-     * @param {BurnParams} params
-     */
-    function testBurn({ privKeyTransfer, pkhGenesisIssuer, pkhNewIssuer, pkhOwner, pkOwner, transferTokenId }) {
-      // 创建Genesis之前的Tx
-      let txP2pk = nft.makeTxP2pk({ outputSatoshis: 100000000 });
-      let genesisOutpointTxId = txP2pk.id;
-
-      // 再创建Genesis Tx
-      let txGenesis = nft.makeTxGenesis({
-        prevTxId: genesisOutpointTxId,
-        outputIndex: 0,
-        outputIssuerPkh: pkhGenesisIssuer,
-        outputTokenId: currTokenId,
-      });
-
-      // 然后创建Issue Tx
-      let txIssue = nft.makeTxIssue(
-        {
-          prevTxId: txGenesis.id,
-          outputIndex: 0,
-          outputOwnerPkh: pkhOwner,
-          changeAddress: dummyAddress,
-        },
-        {
-          inputIssuerPkh: pkhNewIssuer,
-          inputTokenId: currTokenId,
-          outputTokenId: transferTokenId,
-        }
-      );
-
-      // 然后创建Burn Tx
-      let txTransferBurn = nft.makeTxTransferBurn(
-        {
-          prevTxId: txIssue.id,
-          outputIndex: 1,
-          changeAddress: dummyAddress,
-        },
-        {
-          inputOwnerPkh: pkhOwner,
-          inputTokenId: transferTokenId,
-        }
-      );
-
-      // 最后解锁Burn Tx
-      return nft.unlockTxTransferBurn(
-        {
-          txTransferBurn: txTransferBurn,
-          changePkh: dummyPkh,
-        },
-        {
-          privKeyTransfer: privKeyTransfer,
-          inputOwnerPk: pkOwner,
-          inputOwnerPkh: pkhOwner,
-          inputTokenId: transferTokenId,
-        }
-      );
-    }
-
     /* 先正常成功测试 */
-    let verifyData = await testBurn({
-      privKeyTransfer: receiver1PrivKey,
-      pkhGenesisIssuer: issuerPkh,
-      pkhNewIssuer: issuerPkh,
-      pkhOwner: receiver1Pkh,
-      pkOwner: receiver1Pk,
-      transferTokenId: currTokenId + 1,
-    });
+    let verifyData = await nft.unlockTxTransferBurn(
+      {
+        txTransferBurn: txTransferBurn,
+        changePkh: dummyPkh,
+      },
+      {
+        privKeyTransfer: receiver1PrivKey,
+        inputOwnerPk: receiver1Pk,
+        inputOwnerPkh: receiver1Pkh,
+        inputTokenId: currTokenId + 1,
+      }
+    );
+
     let result = verifyData.verify();
     expect(result.success, result.error).to.be.true;
   });
