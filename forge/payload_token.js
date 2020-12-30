@@ -1,21 +1,5 @@
-const { bsv, buildContractClass, signTx, toHex, getPreimage, num2bin, Ripemd160, Sha256, PubKey, SigHashPreimage, Sig, Bytes } = require("scryptlib");
-const {
-  inputIndex,
-  compileContract,
-  loadDesc,
-  DataLen,
-  DataLen4,
-  DataLen8,
-  dummyTxId,
-  satoTxSigUTXOSpendBy,
-  satoTxSigUTXO,
-  reverseEndian,
-  createDummyPayByOthersTx,
-  makeTx,
-  createPayByOthersTx,
-  unlockP2PKHInput,
-} = require("../helper");
-
+const { toHex, num2bin, Ripemd160, Sha256, PubKey, SigHashPreimage, Sig, Bytes } = require("scryptlib");
+const { DataLen, DataLen4, DataLen8 } = require("../helper");
 
 const MINT = "00";
 const TRANSFER = "01";
@@ -50,10 +34,19 @@ class PayloadToken {
    * sell
    * @param {number=} params.satoshiAmountSell 在出售Token时，要求的bsv数量
    */
-  constructor({ scriptCode, dataType, ownerPkh, tokenAmount,
-                blockHeader, blockHeight,
-                genesisOutpointTxIdSwap, genesisOutpointIdxSwap, genesisOutputIdxSwap, amountSwap,
-                satoshiAmountSell }) {
+  constructor({
+    scriptCode,
+    dataType,
+    ownerPkh,
+    tokenAmount,
+    blockHeader,
+    blockHeight,
+    genesisOutpointTxIdSwap,
+    genesisOutpointIdxSwap,
+    genesisOutputIdxSwap,
+    amountSwap,
+    satoshiAmountSell,
+  }) {
     this.dataType = dataType;
     this.ownerPkh = ownerPkh;
     this.tokenAmount = tokenAmount;
@@ -63,9 +56,9 @@ class PayloadToken {
     this.blockHeight = blockHeight;
 
     // swap
-    this.genesisOutpointTxIdSwap = genesisOutpointTxIdSwap
-    this.genesisOutpointIdxSwap = genesisOutpointIdxSwap
-    this.genesisOutputIdxSwap = genesisOutputIdxSwap
+    this.genesisOutpointTxIdSwap = genesisOutpointTxIdSwap;
+    this.genesisOutpointIdxSwap = genesisOutpointIdxSwap;
+    this.genesisOutputIdxSwap = genesisOutputIdxSwap;
     this.amountSwap = amountSwap;
 
     // sell
@@ -83,12 +76,10 @@ class PayloadToken {
       payload =
         toHex(this.ownerPkh) +
         num2bin(this.tokenAmount, DataLen8) +
-
         this.genesisOutpointTxIdSwap +
         num2bin(this.genesisOutpointIdxSwap, DataLen4) +
         num2bin(this.genesisOutputIdxSwap, DataLen4) +
         num2bin(this.amountSwap, DataLen8) +
-
         this.dataType;
     } else if (this.dataType == SELL) {
       payload = toHex(this.ownerPkh) + num2bin(this.tokenAmount, DataLen8) + num2bin(this.satoshiAmountSell, DataLen8) + this.dataType;
@@ -96,7 +87,6 @@ class PayloadToken {
     return payload;
   }
 }
-
 
 module.exports = {
   PayloadToken,

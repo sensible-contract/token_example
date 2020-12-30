@@ -37,12 +37,7 @@ const SWAP = "02";
 const SELL = "03";
 
 /**
- * rabin pubkey
- */
-const rabinPubKey = 0x3d7b971acdd7bff96ca34857e36685038d9c91e3af693cf9e71d170a8aac885b62dd4746fe7ebd7f3d7d16a51d63aa86a4256bdc853d999193ec3e614d4917e3dde9f6954d1784d5a2580f6fb130442e6a8ad0850aeaa100920fcab9176a05eb1aa3b5ee3e3dc75ae7cde3c25d350bba92956c8bacb0c735d39240c6442bab9dn;
-
-/**
- * NFT Tx forge，创建并签名合约相关的Tx
+ * NFT Tx forge，创建合约相关的Tx，执行对应签名
  */
 class NFT {
   /**
@@ -53,20 +48,24 @@ class NFT {
    * @constructor NFT合约 forge
    */
   constructor(deploy = false) {
+    const rabinPubKey = 0x3d7b971acdd7bff96ca34857e36685038d9c91e3af693cf9e71d170a8aac885b62dd4746fe7ebd7f3d7d16a51d63aa86a4256bdc853d999193ec3e614d4917e3dde9f6954d1784d5a2580f6fb130442e6a8ad0850aeaa100920fcab9176a05eb1aa3b5ee3e3dc75ae7cde3c25d350bba92956c8bacb0c735d39240c6442bab9dn;
     this.deploy = deploy;
-    if (false) {
-      const NonFungibleTokenContractClass = buildContractClass(loadDesc("nft_desc.json"));
-      this.nonFungibleToken = new NonFungibleTokenContractClass(rabinPubKey);
 
-      const FungibleTokenContractClass = buildContractClass(loadDesc("token_desc.json"));
-      this.fungibleToken = new FungibleTokenContractClass(rabinPubKey);
-    } else {
+    const compileBeforeTest = false 
+    if (compileBeforeTest) {
+      /* 实时编译 */
       const NonFungibleTokenContractClass = buildContractClass(compileContract("nft.scrypt"));
       this.nonFungibleToken = new NonFungibleTokenContractClass(rabinPubKey);
 
       const FungibleTokenContractClass = buildContractClass(compileContract("token.scrypt"));
       this.fungibleToken = new FungibleTokenContractClass(rabinPubKey);
+    } else {
+      /* 预编译 */
+      const NonFungibleTokenContractClass = buildContractClass(loadDesc("nft_desc.json"));
+      this.nonFungibleToken = new NonFungibleTokenContractClass(rabinPubKey);
 
+      const FungibleTokenContractClass = buildContractClass(loadDesc("token_desc.json"));
+      this.fungibleToken = new FungibleTokenContractClass(rabinPubKey);
     }
     this.nftCodePart = this.nonFungibleToken.codePart.toASM();
     this.tokenCodePart = this.fungibleToken.codePart.toASM();
@@ -110,10 +109,10 @@ class NFT {
    * @returns {Tx} tx
    */
   makeTxGenesis({ prevTxId, outputIndex, issueOutputIndex = 0, outputIssuerPkh, outputTokenId }) {
-    this.genesisPart = reverseEndian(prevTxId) + num2bin(outputIndex, DataLen4) + num2bin(issueOutputIndex, DataLen4);
+    this.nftGenesisPart = reverseEndian(prevTxId) + num2bin(outputIndex, DataLen4) + num2bin(issueOutputIndex, DataLen4);
 
     let pl = new PayloadNFT({ dataType: ISSUE, ownerPkh: outputIssuerPkh, tokenId: outputTokenId });
-    const newLockingScript = [this.nftCodePart, this.genesisPart, pl.dump()].join(" ");
+    const newLockingScript = [this.nftCodePart, this.nftGenesisPart, pl.dump()].join(" ");
 
     // 创建有基本输入utxo的Tx模板
     let tx = createDummyPayByOthersTx();
@@ -159,14 +158,14 @@ class NFT {
    */
   makeTxIssue({ prevTxId, outputIndex, outputOwnerPkh, changeAddress }, { inputIssuerPkh, inputTokenId, outputTokenId }) {
     let pl = new PayloadNFT({ dataType: ISSUE, ownerPkh: inputIssuerPkh, tokenId: inputTokenId });
-    const utxoLockingScript = [this.nftCodePart, this.genesisPart, pl.dump()].join(" ");
+    const utxoLockingScript = [this.nftCodePart, this.nftGenesisPart, pl.dump()].join(" ");
 
     pl.tokenId = outputTokenId;
-    const newLockingScript0 = [this.nftCodePart, this.genesisPart, pl.dump()].join(" ");
+    const newLockingScript0 = [this.nftCodePart, this.nftGenesisPart, pl.dump()].join(" ");
 
     pl.dataType = TRANSFER;
     pl.ownerPkh = outputOwnerPkh;
-    const newLockingScript1 = [this.nftCodePart, this.genesisPart, pl.dump()].join(" ");
+    const newLockingScript1 = [this.nftCodePart, this.nftGenesisPart, pl.dump()].join(" ");
 
     let tx = createDummyPayByOthersTx();
     if (this.deploy) {
@@ -215,10 +214,10 @@ class NFT {
    */
   makeTxTransfer({ prevTxId, outputIndex, outputOwnerPkh, changeAddress }, { inputOwnerPkh, inputTokenId, outputTokenId }) {
     let pl = new PayloadNFT({ dataType: TRANSFER, ownerPkh: inputOwnerPkh, tokenId: inputTokenId });
-    const utxoLockingScript = [this.nftCodePart, this.genesisPart, pl.dump()].join(" ");
+    const utxoLockingScript = [this.nftCodePart, this.nftGenesisPart, pl.dump()].join(" ");
     pl.ownerPkh = outputOwnerPkh;
     pl.tokenId = outputTokenId;
-    const newLockingScript0 = [this.nftCodePart, this.genesisPart, pl.dump()].join(" ");
+    const newLockingScript0 = [this.nftCodePart, this.nftGenesisPart, pl.dump()].join(" ");
 
     let tx = createDummyPayByOthersTx();
     if (this.deploy) {
@@ -263,16 +262,19 @@ class NFT {
    * @param {number} envs.outputTokenId Token新的Id，输出锁定脚本中的tokenId, 应当和原Id保持一致
    * @returns {Tx} tx
    */
-  makeTxSwapToken({ prevTxId, outputIndex, codeWithGenesisPartHashSwap, tokenAmountSwap, changeAddress }, { inputOwnerPkh, inputTokenId, outputOwnerPkh, outputTokenId }) {
+  makeTxSwapToken(
+    { prevTxId, outputIndex, codeWithGenesisPartHashSwap, tokenAmountSwap, changeAddress },
+    { inputOwnerPkh, inputTokenId, outputOwnerPkh, outputTokenId }
+  ) {
     let pl = new PayloadNFT({ dataType: TRANSFER, ownerPkh: inputOwnerPkh, tokenId: inputTokenId });
-    const utxoLockingScript = [this.nftCodePart, this.genesisPart, pl.dump()].join(" ");
+    const utxoLockingScript = [this.nftCodePart, this.nftGenesisPart, pl.dump()].join(" ");
 
     pl.dataType = SWAP;
-    pl.codeWithGenesisPartHashSwap = codeWithGenesisPartHashSwap
-    pl.amountSwap = tokenAmountSwap
-    pl.ownerPkh = outputOwnerPkh
+    pl.codeWithGenesisPartHashSwap = codeWithGenesisPartHashSwap;
+    pl.amountSwap = tokenAmountSwap;
+    pl.ownerPkh = outputOwnerPkh;
     pl.tokenId = outputTokenId;
-    const newLockingScript0 = [this.nftCodePart, this.genesisPart, pl.dump()].join(" ");
+    const newLockingScript0 = [this.nftCodePart, this.nftGenesisPart, pl.dump()].join(" ");
 
     let tx = createDummyPayByOthersTx();
     if (this.deploy) {
@@ -299,7 +301,6 @@ class NFT {
     return txnew;
   }
 
-
   /**
    * 创建 CancelSwapTokenTx
    * NFT拥有者取消以某一Token价格交换nft
@@ -318,16 +319,19 @@ class NFT {
    * @param {number} envs.outputTokenId Token新的Id，输出锁定脚本中的tokenId, 应当和原Id保持一致
    * @returns {Tx} tx
    */
-  makeTxCancelSwapToken({ prevTxId, outputIndex, changeAddress }, { codeWithGenesisPartHashSwap, tokenAmountSwap, inputOwnerPkh, inputTokenId, outputOwnerPkh, outputTokenId }) {
+  makeTxCancelSwapToken(
+    { prevTxId, outputIndex, changeAddress },
+    { codeWithGenesisPartHashSwap, tokenAmountSwap, inputOwnerPkh, inputTokenId, outputOwnerPkh, outputTokenId }
+  ) {
     let pl = new PayloadNFT({ dataType: SWAP, ownerPkh: inputOwnerPkh, tokenId: inputTokenId });
-    pl.codeWithGenesisPartHashSwap = codeWithGenesisPartHashSwap
-    pl.amountSwap = tokenAmountSwap
-    const utxoLockingScript = [this.nftCodePart, this.genesisPart, pl.dump()].join(" ");
+    pl.codeWithGenesisPartHashSwap = codeWithGenesisPartHashSwap;
+    pl.amountSwap = tokenAmountSwap;
+    const utxoLockingScript = [this.nftCodePart, this.nftGenesisPart, pl.dump()].join(" ");
 
     pl.dataType = TRANSFER;
-    pl.ownerPkh = outputOwnerPkh
+    pl.ownerPkh = outputOwnerPkh;
     pl.tokenId = outputTokenId;
-    const newLockingScript0 = [this.nftCodePart, this.genesisPart, pl.dump()].join(" ");
+    const newLockingScript0 = [this.nftCodePart, this.nftGenesisPart, pl.dump()].join(" ");
 
     let tx = createDummyPayByOthersTx();
     if (this.deploy) {
@@ -353,7 +357,6 @@ class NFT {
     txnew.change(changeAddress).fee(FEE);
     return txnew;
   }
-
 
   /**
    * 创建 FinishSwapTokenTx
@@ -381,30 +384,29 @@ class NFT {
    * @param {number} envs.outputTokenId Token新的Id，输出锁定脚本中的tokenId, 应当和原Id保持一致
    * @returns {Tx} tx
    */
-  makeTxFinishSwapToken({ prevNFTTxId, prevNFToutputIndex, changeAddress },
-                        {prevTokenTxId, prevTokenOutputIndex, inputTokenAmount,
-                         tokenGenesisPrevTxId, tokenGenesisOutputIndex, tokenGenesisIssueOutputIndex},
-                        { codeWithGenesisPartHashSwap, tokenAmountSwap, inputOwnerPkh, inputTokenId, outputOwnerPkh, outputTokenId }) {
+  makeTxFinishSwapToken(
+    { prevNFTTxId, prevNFToutputIndex, changeAddress },
+    { prevTokenTxId, prevTokenOutputIndex, inputTokenAmount, tokenGenesisPrevTxId, tokenGenesisOutputIndex, tokenGenesisIssueOutputIndex },
+    { codeWithGenesisPartHashSwap, tokenAmountSwap, inputOwnerPkh, inputTokenId, outputOwnerPkh, outputTokenId }
+  ) {
     let plNFT = new PayloadNFT({ dataType: SWAP, ownerPkh: inputOwnerPkh, tokenId: inputTokenId });
-    plNFT.codeWithGenesisPartHashSwap = codeWithGenesisPartHashSwap
-    plNFT.amountSwap = tokenAmountSwap
-    const utxoLockingScriptNFT = [this.nftCodePart, this.genesisPart, plNFT.dump()].join(" ");
+    plNFT.codeWithGenesisPartHashSwap = codeWithGenesisPartHashSwap;
+    plNFT.amountSwap = tokenAmountSwap;
+    const utxoLockingScriptNFT = [this.nftCodePart, this.nftGenesisPart, plNFT.dump()].join(" ");
 
     plNFT.dataType = TRANSFER;
-    plNFT.ownerPkh = outputOwnerPkh
+    plNFT.ownerPkh = outputOwnerPkh;
     plNFT.tokenId = outputTokenId;
-    const newLockingScript0 = [this.nftCodePart, this.genesisPart, plNFT.dump()].join(" ");
+    const newLockingScript0 = [this.nftCodePart, this.nftGenesisPart, plNFT.dump()].join(" ");
 
-
-
-    let tokenGenesisPart = reverseEndian(tokenGenesisPrevTxId) + num2bin(tokenGenesisOutputIndex, DataLen4) + num2bin(tokenGenesisIssueOutputIndex, DataLen4);
+    let tokenGenesisPart =
+      reverseEndian(tokenGenesisPrevTxId) + num2bin(tokenGenesisOutputIndex, DataLen4) + num2bin(tokenGenesisIssueOutputIndex, DataLen4);
 
     let plToken = new PayloadToken({ dataType: TRANSFER, ownerPkh: inputOwnerPkh, tokenAmount: inputTokenAmount });
     const utxoLockingScriptToken = [this.tokenCodePart, tokenGenesisPart, plToken.dump()].join(" ");
 
-    plToken.ownerPkh = outputOwnerPkh
+    plToken.ownerPkh = outputOwnerPkh;
     const newLockingScript1 = [this.tokenCodePart, tokenGenesisPart, plToken.dump()].join(" ");
-
 
     let tx = createDummyPayByOthersTx();
     if (this.deploy) {
@@ -435,13 +437,11 @@ class NFT {
           satoshis: transferSatoshis,
           script: newLockingScript1, // token transfer
         },
-
       ],
     });
     txnew.change(changeAddress).fee(FEE);
     return txnew;
   }
-
 
   /**
    * 创建 SellTx
@@ -462,13 +462,13 @@ class NFT {
    */
   makeTxSell({ prevTxId, outputIndex, satoshiAmountSell, changeAddress }, { inputOwnerPkh, inputTokenId, outputOwnerPkh, outputTokenId }) {
     let pl = new PayloadNFT({ dataType: TRANSFER, ownerPkh: inputOwnerPkh, tokenId: inputTokenId });
-    const utxoLockingScript = [this.nftCodePart, this.genesisPart, pl.dump()].join(" ");
+    const utxoLockingScript = [this.nftCodePart, this.nftGenesisPart, pl.dump()].join(" ");
 
     pl.dataType = SELL;
-    pl.satoshiAmountSell = satoshiAmountSell
-    pl.ownerPkh = outputOwnerPkh
+    pl.satoshiAmountSell = satoshiAmountSell;
+    pl.ownerPkh = outputOwnerPkh;
     pl.tokenId = outputTokenId;
-    const newLockingScript0 = [this.nftCodePart, this.genesisPart, pl.dump()].join(" ");
+    const newLockingScript0 = [this.nftCodePart, this.nftGenesisPart, pl.dump()].join(" ");
 
     let tx = createDummyPayByOthersTx();
     if (this.deploy) {
@@ -495,7 +495,6 @@ class NFT {
     return txnew;
   }
 
-
   /**
    * 创建 CancelSellTx
    * NFT拥有者取消出售nft
@@ -515,12 +514,12 @@ class NFT {
    */
   makeTxCancelSell({ prevTxId, outputIndex, changeAddress }, { inputOwnerPkh, satoshiAmountSell, inputTokenId, outputOwnerPkh, outputTokenId }) {
     let pl = new PayloadNFT({ dataType: SELL, ownerPkh: inputOwnerPkh, satoshiAmountSell: satoshiAmountSell, tokenId: inputTokenId });
-    const utxoLockingScript = [this.nftCodePart, this.genesisPart, pl.dump()].join(" ");
+    const utxoLockingScript = [this.nftCodePart, this.nftGenesisPart, pl.dump()].join(" ");
 
     pl.dataType = TRANSFER;
     pl.ownerPkh = outputOwnerPkh;
     pl.tokenId = outputTokenId;
-    const newLockingScript0 = [this.nftCodePart, this.genesisPart, pl.dump()].join(" ");
+    const newLockingScript0 = [this.nftCodePart, this.nftGenesisPart, pl.dump()].join(" ");
 
     let tx = createDummyPayByOthersTx();
     if (this.deploy) {
@@ -565,15 +564,17 @@ class NFT {
    * @param {number} envs.outputTokenId Token新的Id，输出锁定脚本中的tokenId, 应当和原Id保持一致
    * @returns {Tx} tx
    */
-  makeTxBuy({ prevTxId, outputIndex, outputOwnerPkh, buyerSatoshis, changeAddress },
-            { inputOwnerPkh, satoshiAmountSell, inputTokenId, outputTokenId }) {
+  makeTxBuy(
+    { prevTxId, outputIndex, outputOwnerPkh, buyerSatoshis, changeAddress },
+    { inputOwnerPkh, satoshiAmountSell, inputTokenId, outputTokenId }
+  ) {
     let pl = new PayloadNFT({ dataType: SELL, ownerPkh: inputOwnerPkh, satoshiAmountSell: satoshiAmountSell, tokenId: inputTokenId });
-    const utxoLockingScript = [this.nftCodePart, this.genesisPart, pl.dump()].join(" ");
+    const utxoLockingScript = [this.nftCodePart, this.nftGenesisPart, pl.dump()].join(" ");
 
     pl.dataType = TRANSFER;
     pl.ownerPkh = outputOwnerPkh;
     pl.tokenId = outputTokenId;
-    const newLockingScript0 = [this.nftCodePart, this.genesisPart, pl.dump()].join(" ");
+    const newLockingScript0 = [this.nftCodePart, this.nftGenesisPart, pl.dump()].join(" ");
 
     let tx = createDummyPayByOthersTx();
     if (this.deploy) {
@@ -604,7 +605,6 @@ class NFT {
     return txnew;
   }
 
-
   /**
    * 创建 TransferBurnTx
    * 用户自行销毁nft，并取回nft上的bsv
@@ -621,7 +621,7 @@ class NFT {
    */
   makeTxTransferBurn({ prevTxId, outputIndex, changeAddress }, { inputOwnerPkh, inputTokenId }) {
     let pl = new PayloadNFT({ dataType: TRANSFER, ownerPkh: inputOwnerPkh, tokenId: inputTokenId });
-    const utxoLockingScript = [this.nftCodePart, this.genesisPart, pl.dump()].join(" ");
+    const utxoLockingScript = [this.nftCodePart, this.nftGenesisPart, pl.dump()].join(" ");
 
     let tx = createDummyPayByOthersTx();
     if (this.deploy) {
@@ -681,7 +681,7 @@ class NFT {
     const curInputIndex = txIssue.inputs.length - 1;
 
     let pl = new PayloadNFT({ dataType: ISSUE, ownerPkh: inputIssuerPkh, tokenId: inputTokenId });
-    this.nonFungibleToken.setDataPart(this.genesisPart + " " + pl.dump());
+    this.nonFungibleToken.setDataPart(this.nftGenesisPart + " " + pl.dump());
     this.nonFungibleToken.txContext = { tx: txIssue, inputIndex: curInputIndex, inputSatoshis: issueSatoshis };
 
     // 计算preimage
@@ -753,7 +753,7 @@ class NFT {
     const curInputIndex = txTransfer.inputs.length - 1;
 
     let pl = new PayloadNFT({ dataType: TRANSFER, ownerPkh: inputOwnerPkh, tokenId: inputTokenId });
-    this.nonFungibleToken.setDataPart(this.genesisPart + " " + pl.dump());
+    this.nonFungibleToken.setDataPart(this.nftGenesisPart + " " + pl.dump());
     this.nonFungibleToken.txContext = { tx: txTransfer, inputIndex: curInputIndex, inputSatoshis: transferSatoshis };
 
     // 计算preimage
@@ -813,7 +813,7 @@ class NFT {
     const curInputIndex = txTransferBurn.inputs.length - 1;
 
     let pl = new PayloadNFT({ dataType: TRANSFER, ownerPkh: inputOwnerPkh, tokenId: inputTokenId });
-    this.nonFungibleToken.setDataPart(this.genesisPart + " " + pl.dump());
+    this.nonFungibleToken.setDataPart(this.nftGenesisPart + " " + pl.dump());
     this.nonFungibleToken.txContext = { tx: txTransferBurn, inputIndex: curInputIndex, inputSatoshis: transferSatoshis };
 
     // 计算preimage
