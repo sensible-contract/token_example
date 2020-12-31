@@ -51,7 +51,7 @@ class NFT {
     const rabinPubKey = 0x3d7b971acdd7bff96ca34857e36685038d9c91e3af693cf9e71d170a8aac885b62dd4746fe7ebd7f3d7d16a51d63aa86a4256bdc853d999193ec3e614d4917e3dde9f6954d1784d5a2580f6fb130442e6a8ad0850aeaa100920fcab9176a05eb1aa3b5ee3e3dc75ae7cde3c25d350bba92956c8bacb0c735d39240c6442bab9dn;
     this.deploy = deploy;
 
-    const compileBeforeTest = false 
+    const compileBeforeTest = true
     if (compileBeforeTest) {
       /* 实时编译 */
       const NonFungibleTokenContractClass = buildContractClass(compileContract("nft.scrypt"));
@@ -554,7 +554,7 @@ class NFT {
    * @param {Sha256} params.prevTxId 上一个selling utxo txid
    * @param {number} params.outputIndex 上一个selling utxo outputIndex
    * @param {Ripemd160} params.outputOwnerPkh Token输出给购买者pkh
-   * @param {Ripemd160} params.buyerSatoshis Token输出给购买者的bsv
+   * @param {number} params.buyerSatoshis Token输出给购买者的bsv
    * @param {Ripemd160} params.changeAddress 找零地址
    *
    * @param {Object} envs 调用环境

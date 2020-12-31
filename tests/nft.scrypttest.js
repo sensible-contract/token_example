@@ -65,7 +65,7 @@ describe("Test sCrypt contract NFT In Javascript", () => {
     }
   );
 
-  // 或者创建Transfer Tx
+  // 创建Transfer Tx
   let txTransfer = nft.makeTxTransfer(
     {
       prevTxId: txIssue.id,
@@ -80,7 +80,7 @@ describe("Test sCrypt contract NFT In Javascript", () => {
     }
   );
 
-  // 或者创建Burn Tx
+  // 创建Burn Tx
   let txTransferBurn = nft.makeTxTransferBurn(
     {
       prevTxId: txIssue.id,
@@ -91,6 +91,72 @@ describe("Test sCrypt contract NFT In Javascript", () => {
       inputOwnerPkh: receiver1Pkh,
       inputTokenId: currTokenId + 1,
     }
+  );
+
+  let codeWithGenesisPartHashSwap = bsv.crypto.Hash.sha256sha256(bsv.util.buffer.hexToBuffer("00"));
+  // 创建Swap Tx
+  let txSwapToken = nft.makeTxSwapToken(
+    {
+      prevTxId: txIssue.id,
+      outputIndex: 1,
+      codeWithGenesisPartHashSwap: codeWithGenesisPartHashSwap,
+      tokenAmountSwap: 1,
+      changeAddress: dummyAddress,
+    },
+    { inputOwnerPkh: receiver1Pkh, inputTokenId: currTokenId + 1, outputOwnerPkh: receiver1Pkh, outputTokenId: currTokenId + 1 }
+  );
+
+  // 创建 cancel swapToken Tx
+  let txCancelSwapToken = nft.makeTxCancelSwapToken(
+    { prevTxId: txSwapToken.id, outputIndex: 0, changeAddress: dummyAddress },
+    {
+      codeWithGenesisPartHashSwap: codeWithGenesisPartHashSwap,
+      tokenAmountSwap: 1,
+      inputOwnerPkh: receiver1Pkh,
+      inputTokenId: currTokenId + 1,
+      outputOwnerPkh: receiver1Pkh,
+      outputTokenId: currTokenId + 1,
+    }
+  );
+
+  const satoshiAmountSell = 100000;
+  // 创建sell Tx
+  let txSell = nft.makeTxSell(
+    {
+      prevTxId: txIssue.id,
+      outputIndex: 1,
+      satoshiAmountSell: satoshiAmountSell,
+      changeAddress: dummyAddress,
+    },
+    {
+      inputOwnerPkh: receiver1Pkh,
+      inputTokenId: currTokenId + 1,
+      outputOwnerPkh: receiver1Pkh,
+      outputTokenId: currTokenId + 1,
+    }
+  );
+
+  // 创建取消sell Tx
+  let txCancelSell = nft.makeTxCancelSell(
+    {
+      prevTxId: txSell.id,
+      outputIndex: 0,
+      changeAddress: dummyAddress,
+    },
+    {
+      inputOwnerPkh: receiver1Pkh,
+      satoshiAmountSell: satoshiAmountSell,
+      inputTokenId: currTokenId + 1,
+      outputOwnerPkh: receiver1Pkh,
+      outputTokenId: currTokenId + 1,
+    }
+  );
+
+  const buyerSatoshis = 5000;
+  // 创建购买buy Tx
+  let txBuy = nft.makeTxBuy(
+    { prevTxId: txSell.id, outputIndex: 0, outputOwnerPkh: receiver2Pkh, buyerSatoshis: buyerSatoshis, changeAddress: dummyAddress },
+    { inputOwnerPkh: receiver1Pkh, satoshiAmountSell: satoshiAmountSell, inputTokenId: currTokenId + 1, outputTokenId: currTokenId + 1 }
   );
 
   it("should succeed when one new token is issued", async () => {
