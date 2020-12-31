@@ -122,10 +122,11 @@ contract Token {
     // dataType must be transfer
     require(pl.dataType == PayloadToken.TRANSFER);
 
+    require(pl.amount == tokenAmount0 + tokenAmount1);
+
     // authorize
     require(hash160(sender) == pl.ownerPkh);
     require(checkSig(senderSig, sender));
-    require(pl.amount == tokenAmount0 + tokenAmount1);
 
     // 溯源
     SatoTx st = new SatoTx(this.rabinPubKey, txPreimage, preTxOutpointSig, preTxOutpointMsg, preTxOutpointPadding, 0, b'', b'');

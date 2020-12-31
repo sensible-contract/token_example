@@ -14,11 +14,11 @@ import "payload_token.scrypt";
  *    issue: 发行新的NFT
  *    transfer: 将NFT所有权转移给他人
  *    makeSwapToken: 发起NFT到Token的兑换
- *    cancelSwapToken：取消NFT到Token的兑换，发起方合约执行
- *    finishSwapToken：完成NFT到Token的兑换，发起方合约执行
+ *    cancelSwapToken：取消NFT到Token的兑换，发起方执行
+ *    finishSwapToken：完成NFT到Token的兑换，参与方直接执行
  *    sell：发起NFT到bsv的兑换
  *    cancelSell：取消NFT到bsv的兑换
- *    buy：完成bsv到NFT的兑换，参与方合约执行
+ *    buy：完成bsv到NFT的兑换，参与方直接执行
  *    burn：销毁token
  *
  * 各个函数详细处理逻辑见各自文档。
@@ -54,12 +54,13 @@ contract NFT {
     // dataType must be issue
     require(pl.dataType == PayloadNFT.ISSUE);
 
-    SatoTx st = new SatoTx(this.rabinPubKey, txPreimage, preTxOutpointSig, preTxOutpointMsg, preTxOutpointPadding, 0, b'', b'');
-    require(st.verifyGenesis(pl.codeWithGenesisPart, pl.genesisOutpoint, pl.genesisOutputIdx));
-
     // authorize
     require(hash160(issuer) == pl.ownerPkh);
     require(checkSig(issuerSig, issuer));
+
+    // 溯源
+    SatoTx st = new SatoTx(this.rabinPubKey, txPreimage, preTxOutpointSig, preTxOutpointMsg, preTxOutpointPadding, 0, b'', b'');
+    require(st.verifyGenesis(pl.codeWithGenesisPart, pl.genesisOutpoint, pl.genesisOutputIdx));
 
     // 业务操作
     int satoshiIssue = Util.value(txPreimage);
@@ -107,13 +108,13 @@ contract NFT {
     // dataType must be transfer
     require(pl.dataType == PayloadNFT.TRANSFER);
 
-    // 溯源
-    SatoTx st = new SatoTx(this.rabinPubKey, txPreimage, preTxOutpointSig, preTxOutpointMsg, preTxOutpointPadding, 0, b'', b'');
-    require(st.verifyGenesis(pl.codeWithGenesisPart, SatoTx.disableUtxoInGenesisTx, b''));
-
     // authorize
     require(hash160(owner) == pl.ownerPkh);
     require(checkSig(ownerSig, owner));
+
+    // 溯源
+    SatoTx st = new SatoTx(this.rabinPubKey, txPreimage, preTxOutpointSig, preTxOutpointMsg, preTxOutpointPadding, 0, b'', b'');
+    require(st.verifyGenesis(pl.codeWithGenesisPart, SatoTx.disableUtxoInGenesisTx, b''));
 
     // 业务操作
     pl.ownerPkh = receiverPkh;
