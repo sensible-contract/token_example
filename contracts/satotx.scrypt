@@ -15,7 +15,7 @@ import "util.scrypt";
 * value 8 Bytes
 */
 
-contract PayloadU3 {
+contract PayloadU4 {
   int length;
   int scriptCodeLen;
 
@@ -33,7 +33,7 @@ contract PayloadU3 {
   }
 }
 
-contract PayloadU4 {
+contract PayloadU4SpendBy {
   int length;
   int scriptCodeLen;
 
@@ -76,7 +76,7 @@ contract SatoTx {
   */
   public function verifyGenesis(bytes codeWithGenesisPart, bytes genesisOutpoint, bytes genesisOutputIdx) {
     // preTxOutpointMsg: preTxId+index, value, lockingScript, byTxId
-    PayloadU4 pl = new PayloadU4(this.preTxOutpointMsg);
+    PayloadU4SpendBy pl = new PayloadU4SpendBy(this.preTxOutpointMsg);
 
     /* 确保溯源消息超过最短长度 */
     require(pl.scriptCodeLen > 0);
@@ -134,7 +134,7 @@ contract SatoTx {
     // this ensures prevouts is the preimage of hashPrevouts
     require(hash256(prevouts) == Util.hashPrevouts(this.txPreimage));
 
-    PayloadU3 pl = new PayloadU3(this.sideTxUtxoMsg);
+    PayloadU4 pl = new PayloadU4(this.sideTxUtxoMsg);
     require(pl.scriptCodeLen > 0);
 
     // 签名校验sideTxUtxoMsg消息
@@ -183,7 +183,3 @@ contract SatoTx {
     require(matchSide == true);
   }
 }
-
-
-
-
