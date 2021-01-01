@@ -200,8 +200,15 @@ function unlockP2PKHInput(privateKey, tx, inputIndex, sigtype) {
   ))
 }
 
-
-async function satoTxSigUTXOSpendBy(txId, index, byTxId, txHex, byTxHex) {
+/**
+ * @param {Object} satotxData
+ * @param {number} satotxData.index utxo的vout
+ * @param {Sha256} satotxData.txId 产生utxo的txid
+ * @param {String} satotxData.txHex 产生utxo的rawtx
+ * @param {Sha256} satotxData.byTxId 花费此utxo的txid
+ * @param {String} satotxData.byTxHex 花费此utxo的rawtx
+ */
+async function satoTxSigUTXOSpendBy({index, txId, txHex, byTxId, byTxHex}) {
   const {
     data: result
   } = await axios.post(`${SATOTX_API_PREFIX}/api/sig-utxo-spend-by/${txId}/${index}/${byTxId}` , {
@@ -211,7 +218,13 @@ async function satoTxSigUTXOSpendBy(txId, index, byTxId, txHex, byTxHex) {
   return result.data
 }
 
-async function satoTxSigUTXO(txId, index, txHex) {
+/**
+ * @param {Object} satotxData
+ * @param {number} satotxData.index utxo的vout
+ * @param {Sha256} satotxData.txId 产生utxo的txid
+ * @param {String} satotxData.txHex 产生utxo的rawtx
+ */
+async function satoTxSigUTXO({index, txId, txHex}) {
   const {
     data: result
   } = await axios.post(`${SATOTX_API_PREFIX}/api/sig-utxo/${txId}/${index}` , {

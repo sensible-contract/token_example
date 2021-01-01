@@ -21,15 +21,15 @@ class PayloadNFT {
    * @param {Ripemd160} params.ownerPkh 所属人
    * @param {number} params.tokenId tokenId
    * @param {Sha256=} params.codeWithGenesisPartHashSwap 在和Token合约进行swap时，指定Token合约的code前缀部分
-   * @param {number=} params.amountSwap 在和Token合约进行swap时，要求的token数量
+   * @param {number=} params.tokenAmountSwap 在和Token合约进行swap时，要求的token数量
    * @param {number=} params.satoshiAmountSell 在出售NFT时，要求的bsv数量
    */
-  constructor({ scriptCode, dataType, ownerPkh, tokenId, codeWithGenesisPartHashSwap, amountSwap, satoshiAmountSell }) {
+  constructor({ scriptCode, dataType, ownerPkh, tokenId, codeWithGenesisPartHashSwap, tokenAmountSwap, satoshiAmountSell }) {
     this.dataType = dataType;
     this.ownerPkh = ownerPkh;
     this.tokenId = tokenId;
     this.codeWithGenesisPartHashSwap = codeWithGenesisPartHashSwap;
-    this.amountSwap = amountSwap;
+    this.tokenAmountSwap = tokenAmountSwap;
     this.satoshiAmountSell = satoshiAmountSell;
   }
 
@@ -40,7 +40,7 @@ class PayloadNFT {
         toHex(this.ownerPkh) +
         num2bin(this.tokenId, DataLen8) +
         toHex(this.codeWithGenesisPartHashSwap) +
-        num2bin(this.amountSwap, DataLen8) +
+        num2bin(this.tokenAmountSwap, DataLen8) +
         this.dataType;
     } else if (this.dataType == SELL) {
       payload = toHex(this.ownerPkh) + num2bin(this.tokenId, DataLen8) + num2bin(this.satoshiAmountSell, DataLen8) + this.dataType;
@@ -53,4 +53,9 @@ class PayloadNFT {
 
 module.exports = {
   PayloadNFT,
+
+  ISSUE,
+  TRANSFER,
+  SWAP,
+  SELL,
 };

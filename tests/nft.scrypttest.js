@@ -2,6 +2,7 @@ const { expect } = require("chai");
 const _ = require("lodash");
 const { bsv, toHex } = require("scryptlib");
 const { NFT } = require("../forge/nft");
+const { PayloadNFT, ISSUE, TRANSFER, SWAP, SELL } = require("../forge/payload_nft");
 
 const { privateKey } = require("../privateKey");
 
@@ -51,6 +52,7 @@ describe("Test sCrypt contract NFT In Javascript", () => {
   });
 
   // 然后创建Issue Tx
+  let txIssuePl = new PayloadNFT({ dataType: ISSUE, ownerPkh: issuerPkh, tokenId: currTokenId });
   let txIssue = nft.makeTxIssue(
     {
       prevTxId: txGenesis.id,
@@ -59,13 +61,36 @@ describe("Test sCrypt contract NFT In Javascript", () => {
       changeAddress: dummyAddress,
     },
     {
-      inputIssuerPkh: issuerPkh,
-      inputTokenId: currTokenId,
+      pl: _.cloneDeep(txIssuePl),
       outputTokenId: currTokenId + 1,
     }
   );
+  it("should succeed when one new token is issued", async () => {
+    let verifyData = await nft.unlockTxIssue(
+      {
+        tx: txIssue,
+        outputOwnerPkh: receiver1Pkh,
+        changePkh: dummyPkh,
+      },
+      {
+        pl: txIssuePl,
+        privKeyIssuer: issuerPrivKey,
+        publicKeyIssuer: publicKeyIssuer,
+      },
+      {
+        index: 0,
+        txId: genesisOutpointTxId,
+        txHex: genesisPreTxHex,
+        byTxId: txGenesis.id,
+        byTxHex: txGenesis.serialize(),
+      }
+    );
+    let result = verifyData.verify();
+    expect(result.success, result.error).to.be.true;
+  });
 
   // 创建Transfer Tx
+  let txTransferPl = new PayloadNFT({ dataType: TRANSFER, ownerPkh: receiver1Pkh, tokenId: currTokenId + 1 });
   let txTransfer = nft.makeTxTransfer(
     {
       prevTxId: txIssue.id,
@@ -74,27 +99,38 @@ describe("Test sCrypt contract NFT In Javascript", () => {
       changeAddress: dummyAddress,
     },
     {
-      inputOwnerPkh: receiver1Pkh,
-      inputTokenId: currTokenId + 1,
+      pl: _.cloneDeep(txTransferPl),
       outputTokenId: currTokenId + 1,
     }
   );
+  it("should succeed when a token is transferred", async () => {
+    let verifyData = await nft.unlockTxTransfer(
+      {
+        tx: txTransfer,
+        outputOwnerPkh: receiver2Pkh,
+        changePkh: dummyPkh,
+      },
+      {
+        pl: txTransferPl,
+        privKeyTransfer: receiver1PrivKey,
+        inputOwnerPk: receiver1Pk,
+      },
+      {
+        index: 0,
+        txId: txGenesis.id,
+        txHex: txGenesis.serialize(),
+        byTxId: txIssue.id,
+        byTxHex: txIssue.serialize(),
+      }
+    );
+    let result = verifyData.verify();
+    expect(result.success, result.error).to.be.true;
+  });
 
-  // 创建Burn Tx
-  let txTransferBurn = nft.makeTxTransferBurn(
-    {
-      prevTxId: txIssue.id,
-      outputIndex: 1,
-      changeAddress: dummyAddress,
-    },
-    {
-      inputOwnerPkh: receiver1Pkh,
-      inputTokenId: currTokenId + 1,
-    }
-  );
 
   let codeWithGenesisPartHashSwap = bsv.crypto.Hash.sha256sha256(bsv.util.buffer.hexToBuffer("00"));
   // 创建Swap Tx
+  let txSwapTokenPl = new PayloadNFT({ dataType: TRANSFER, ownerPkh: receiver1Pkh, tokenId: currTokenId + 1 });
   let txSwapToken = nft.makeTxSwapToken(
     {
       prevTxId: txIssue.id,
@@ -103,17 +139,21 @@ describe("Test sCrypt contract NFT In Javascript", () => {
       tokenAmountSwap: 1,
       changeAddress: dummyAddress,
     },
-    { inputOwnerPkh: receiver1Pkh, inputTokenId: currTokenId + 1, outputOwnerPkh: receiver1Pkh, outputTokenId: currTokenId + 1 }
+    { pl: txSwapTokenPl, outputOwnerPkh: receiver1Pkh, outputTokenId: currTokenId + 1 }
   );
 
   // 创建 cancel swapToken Tx
+  let txCancelSwapTokenPl = new PayloadNFT({
+    dataType: SWAP,
+    ownerPkh: receiver1Pkh,
+    tokenId: currTokenId + 1,
+    codeWithGenesisPartHashSwap: codeWithGenesisPartHashSwap,
+    tokenAmountSwap: 1,
+  });
   let txCancelSwapToken = nft.makeTxCancelSwapToken(
     { prevTxId: txSwapToken.id, outputIndex: 0, changeAddress: dummyAddress },
     {
-      codeWithGenesisPartHashSwap: codeWithGenesisPartHashSwap,
-      tokenAmountSwap: 1,
-      inputOwnerPkh: receiver1Pkh,
-      inputTokenId: currTokenId + 1,
+      pl: txCancelSwapTokenPl,
       outputOwnerPkh: receiver1Pkh,
       outputTokenId: currTokenId + 1,
     }
@@ -121,6 +161,7 @@ describe("Test sCrypt contract NFT In Javascript", () => {
 
   const satoshiAmountSell = 100000;
   // 创建sell Tx
+  let txSellPl = new PayloadNFT({ dataType: TRANSFER, ownerPkh: receiver1Pkh, tokenId: currTokenId + 1 });
   let txSell = nft.makeTxSell(
     {
       prevTxId: txIssue.id,
@@ -129,14 +170,15 @@ describe("Test sCrypt contract NFT In Javascript", () => {
       changeAddress: dummyAddress,
     },
     {
-      inputOwnerPkh: receiver1Pkh,
-      inputTokenId: currTokenId + 1,
+      pl: txSellPl,
       outputOwnerPkh: receiver1Pkh,
       outputTokenId: currTokenId + 1,
     }
   );
 
   // 创建取消sell Tx
+  let txCancelSellPl = new PayloadNFT({ dataType: SELL, ownerPkh: receiver1Pkh, satoshiAmountSell: satoshiAmountSell, tokenId: currTokenId + 1 });
+
   let txCancelSell = nft.makeTxCancelSell(
     {
       prevTxId: txSell.id,
@@ -144,9 +186,8 @@ describe("Test sCrypt contract NFT In Javascript", () => {
       changeAddress: dummyAddress,
     },
     {
-      inputOwnerPkh: receiver1Pkh,
+      pl: txCancelSellPl,
       satoshiAmountSell: satoshiAmountSell,
-      inputTokenId: currTokenId + 1,
       outputOwnerPkh: receiver1Pkh,
       outputTokenId: currTokenId + 1,
     }
@@ -154,146 +195,39 @@ describe("Test sCrypt contract NFT In Javascript", () => {
 
   const buyerSatoshis = 5000;
   // 创建购买buy Tx
+  let txBuyPl = new PayloadNFT({ dataType: SELL, ownerPkh: receiver1Pkh, satoshiAmountSell: satoshiAmountSell, tokenId: currTokenId + 1 });
   let txBuy = nft.makeTxBuy(
     { prevTxId: txSell.id, outputIndex: 0, outputOwnerPkh: receiver2Pkh, buyerSatoshis: buyerSatoshis, changeAddress: dummyAddress },
-    { inputOwnerPkh: receiver1Pkh, satoshiAmountSell: satoshiAmountSell, inputTokenId: currTokenId + 1, outputTokenId: currTokenId + 1 }
+    { pl: txBuyPl, inputOwnerPkh: receiver1Pkh, satoshiAmountSell: satoshiAmountSell, outputTokenId: currTokenId + 1 }
   );
 
-  it("should succeed when one new token is issued", async () => {
-    /**
-     * @type {IssueEnvs}
-     */
-    let envs = {
-      privKeyIssuer: issuerPrivKey,
-      publicKeyIssuer: publicKeyIssuer,
-      inputIssuerPkh: issuerPkh,
-      inputTokenId: currTokenId,
-    };
-    let testCaseEnvs = [];
-
-    /* 先正常成功测试 */
-    let envs0 = _.cloneDeep(envs);
-    testCaseEnvs.push(envs0);
-
-    // 再始测试各种情况
-
-    // // copy utxo must fail
-    // result = verifyData.verify();
-    // expect(result.success, result.error).to.be.false;
-
-    // issuer must not change
-    let envs1 = _.cloneDeep(envs);
-    envs1.inputIssuerPkh = receiver1Pkh;
-    testCaseEnvs.push(envs1);
-
-    // unauthorized key
-    let envs2 = _.cloneDeep(envs);
-    envs2.privKeyIssuer = receiver1PrivKey;
-    testCaseEnvs.push(envs2);
-
-    // mismatched next token ID
-    let envs3 = _.cloneDeep(envs);
-    envs3.inputTokenId = currTokenId + 2;
-    testCaseEnvs.push(envs3);
-
-    // test
-    for (let idx = 0; idx < testCaseEnvs.length; idx++) {
-      let verifyData = await nft.unlockTxIssue(
-        {
-          txIssue: txIssue,
-          outputReceiverPkh: receiver1Pkh,
-          changePkh: dummyPkh,
-        },
-        testCaseEnvs[idx],
-        {
-          preTxId: txGenesis.id,
-          preTxHex: txGenesis.serialize(),
-          prevPrevTxId: genesisOutpointTxId,
-          prevPrevOutputIndex: 0,
-          prevPrevTxHex: genesisPreTxHex,
-        }
-      );
-
-      let result = verifyData.verify();
-      if (idx == 0) {
-        expect(result.success, result.error).to.be.true;
-      } else {
-        expect(result.success, result.error).to.be.false;
-      }
+  // 创建Burn Tx
+  let txTransferBurnPl = new PayloadNFT({ dataType: TRANSFER, ownerPkh: receiver1Pkh, tokenId: currTokenId + 1 });
+  let txTransferBurn = nft.makeTxTransferBurn(
+    {
+      prevTxId: txIssue.id,
+      outputIndex: 1,
+      changeAddress: dummyAddress,
+    },
+    {
+      pl: txTransferBurnPl,
     }
-  });
-
-  it("should succeed when a token is transferred", async () => {
-    /**
-     * @type {TransEnvs}
-     */
-    let envs = {
-      privKeyTransfer: receiver1PrivKey,
-      inputOwnerPkh: receiver1Pkh,
-      inputOwnerPk: receiver1Pk,
-      inputTokenId: currTokenId + 1,
-    };
-
-    let testCaseEnvs = [];
-
-    /* 先正常成功测试 */
-    let envs0 = _.cloneDeep(envs);
-    testCaseEnvs.push(envs0);
-
-    // 再始测试各种情况
-    // unauthorized key
-    let envs1 = _.cloneDeep(envs);
-    envs1.privKeyTransfer = receiver2PrivKey;
-    testCaseEnvs.push(envs1);
-
-    // token ID must not change
-    let envs2 = _.cloneDeep(envs);
-    envs2.inputTokenId = currTokenId + 2;
-    testCaseEnvs.push(envs2);
-
-    // test
-    for (let idx = 0; idx < testCaseEnvs.length; idx++) {
-      let verifyData = await nft.unlockTxTransfer(
-        {
-          txTransfer: txTransfer,
-          outputOwnerPkh: receiver2Pkh,
-          changePkh: dummyPkh,
-        },
-        testCaseEnvs[idx],
-        {
-          preTxId: txIssue.id,
-          preTxHex: txIssue.serialize(),
-          prevPrevTxId: txGenesis.id,
-          prevPrevOutputIndex: 0,
-          prevPrevTxHex: txGenesis.serialize(),
-        }
-      );
-
-      let result = verifyData.verify();
-      if (idx == 0) {
-        expect(result.success, result.error).to.be.true;
-      } else {
-        expect(result.success, result.error).to.be.false;
-      }
-    }
-  });
-
+  );
   it("should success when receiver burn the token", async () => {
     /* 先正常成功测试 */
     let verifyData = await nft.unlockTxTransferBurn(
       {
-        txTransferBurn: txTransferBurn,
+        tx: txTransferBurn,
         changePkh: dummyPkh,
       },
       {
+        pl: txTransferBurnPl,
         privKeyTransfer: receiver1PrivKey,
         inputOwnerPk: receiver1Pk,
-        inputOwnerPkh: receiver1Pkh,
-        inputTokenId: currTokenId + 1,
       }
     );
-
     let result = verifyData.verify();
     expect(result.success, result.error).to.be.true;
   });
+
 });

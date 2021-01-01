@@ -29,7 +29,7 @@ class PayloadToken {
    * @param {Sha256=} params.genesisOutpointTxIdSwap 在和其他同类Token合约进行swap时，指定Token合约的genesisOutpoint TxId
    * @param {number=} params.genesisOutpointIdxSwap 在和其他同类Token合约进行swap时，指定Token合约的genesisOutpoint Index
    * @param {number=} params.genesisOutputIdxSwap 在和其他同类Token合约进行swap时，指定Token合约的genesisOutputIdx
-   * @param {number=} params.amountSwap 在和其他同类Token合约进行swap时，要求的其他token数量
+   * @param {number=} params.tokenAmountSwap 在和其他同类Token合约进行swap时，要求的其他token数量
    *
    * sell
    * @param {number=} params.satoshiAmountSell 在出售Token时，要求的bsv数量
@@ -44,7 +44,7 @@ class PayloadToken {
     genesisOutpointTxIdSwap,
     genesisOutpointIdxSwap,
     genesisOutputIdxSwap,
-    amountSwap,
+    tokenAmountSwap,
     satoshiAmountSell,
   }) {
     this.dataType = dataType;
@@ -59,7 +59,7 @@ class PayloadToken {
     this.genesisOutpointTxIdSwap = genesisOutpointTxIdSwap;
     this.genesisOutpointIdxSwap = genesisOutpointIdxSwap;
     this.genesisOutputIdxSwap = genesisOutputIdxSwap;
-    this.amountSwap = amountSwap;
+    this.tokenAmountSwap = tokenAmountSwap;
 
     // sell
     this.satoshiAmountSell = satoshiAmountSell;
@@ -79,7 +79,7 @@ class PayloadToken {
         this.genesisOutpointTxIdSwap +
         num2bin(this.genesisOutpointIdxSwap, DataLen4) +
         num2bin(this.genesisOutputIdxSwap, DataLen4) +
-        num2bin(this.amountSwap, DataLen8) +
+        num2bin(this.tokenAmountSwap, DataLen8) +
         this.dataType;
     } else if (this.dataType == SELL) {
       payload = toHex(this.ownerPkh) + num2bin(this.tokenAmount, DataLen8) + num2bin(this.satoshiAmountSell, DataLen8) + this.dataType;
@@ -90,4 +90,9 @@ class PayloadToken {
 
 module.exports = {
   PayloadToken,
+
+  MINT,
+  TRANSFER,
+  SWAP,
+  SELL,
 };
