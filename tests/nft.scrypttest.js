@@ -38,12 +38,16 @@ describe("Test sCrypt contract NFT In Javascript", () => {
 
   const currTokenId = 0;
 
-  // 创建Genesis之前的Tx
+  //////////////////////////////////////////////////////////////// payload
+  let txIssuePl = new PayloadNFT({ dataType: ISSUE, ownerPkh: issuerPkh, tokenId: currTokenId });
+  let txTransferPl = new PayloadNFT({ dataType: TRANSFER, ownerPkh: receiver1Pkh, tokenId: currTokenId + 1 });
+
+  //////////////////////////////////////////////////////////////// 创建Genesis之前的Tx
   let txP2pk = nft.makeTxP2pk({ outputSatoshis: 100000000 });
   let genesisOutpointTxId = txP2pk.id;
   let genesisPreTxHex = txP2pk.serialize();
 
-  // 再创建Genesis Tx
+  //////////////////////////////////////////////////////////////// 再创建Genesis Tx
   let txGenesis = nft.makeTxGenesis({
     prevTxId: genesisOutpointTxId,
     outputIndex: 0,
@@ -51,29 +55,28 @@ describe("Test sCrypt contract NFT In Javascript", () => {
     outputTokenId: currTokenId,
   });
 
-  // 然后创建Issue Tx
-  let txIssuePl = new PayloadNFT({ dataType: ISSUE, ownerPkh: issuerPkh, tokenId: currTokenId });
+  //////////////////////////////////////////////////////////////// 然后创建Issue Tx
   let txIssue = nft.makeTxIssue(
     {
       prevTxId: txGenesis.id,
       outputIndex: 0,
-      outputOwnerPkh: receiver1Pkh,
-      changeAddress: dummyAddress,
+      pl: _.cloneDeep(txIssuePl),
     },
     {
-      pl: _.cloneDeep(txIssuePl),
+      outputOwnerPkh: receiver1Pkh,
       outputTokenId: currTokenId + 1,
+      changeAddress: dummyAddress,
     }
   );
   it("should succeed when one new token is issued", async () => {
     let verifyData = await nft.unlockTxIssue(
       {
         tx: txIssue,
+        pl: _.cloneDeep(txIssuePl),
         outputOwnerPkh: receiver1Pkh,
         changePkh: dummyPkh,
       },
       {
-        pl: txIssuePl,
         privKeyIssuer: issuerPrivKey,
         publicKeyIssuer: publicKeyIssuer,
       },
@@ -89,29 +92,28 @@ describe("Test sCrypt contract NFT In Javascript", () => {
     expect(result.success, result.error).to.be.true;
   });
 
-  // 创建Transfer Tx
-  let txTransferPl = new PayloadNFT({ dataType: TRANSFER, ownerPkh: receiver1Pkh, tokenId: currTokenId + 1 });
+  //////////////////////////////////////////////////////////////// 创建Transfer Tx
   let txTransfer = nft.makeTxTransfer(
     {
       prevTxId: txIssue.id,
       outputIndex: 1,
-      outputOwnerPkh: receiver2Pkh,
-      changeAddress: dummyAddress,
+      pl: _.cloneDeep(txTransferPl),
     },
     {
-      pl: _.cloneDeep(txTransferPl),
+      outputOwnerPkh: receiver2Pkh,
       outputTokenId: currTokenId + 1,
+      changeAddress: dummyAddress,
     }
   );
   it("should succeed when a token is transferred", async () => {
     let verifyData = await nft.unlockTxTransfer(
       {
         tx: txTransfer,
+        pl: _.cloneDeep(txTransferPl),
         outputOwnerPkh: receiver2Pkh,
         changePkh: dummyPkh,
       },
       {
-        pl: txTransferPl,
         privKeyTransfer: receiver1PrivKey,
         inputOwnerPk: receiver1Pk,
       },
@@ -127,22 +129,48 @@ describe("Test sCrypt contract NFT In Javascript", () => {
     expect(result.success, result.error).to.be.true;
   });
 
-
+  //////////////////////////////////////////////////////////////// 创建Swap Tx
   let codeWithGenesisPartHashSwap = bsv.crypto.Hash.sha256sha256(bsv.util.buffer.hexToBuffer("00"));
-  // 创建Swap Tx
-  let txSwapTokenPl = new PayloadNFT({ dataType: TRANSFER, ownerPkh: receiver1Pkh, tokenId: currTokenId + 1 });
   let txSwapToken = nft.makeTxSwapToken(
     {
       prevTxId: txIssue.id,
       outputIndex: 1,
+      pl: _.cloneDeep(txTransferPl),
+    },
+    {
+      outputOwnerPkh: receiver1Pkh,
       codeWithGenesisPartHashSwap: codeWithGenesisPartHashSwap,
       tokenAmountSwap: 1,
+      outputTokenId: currTokenId + 1,
       changeAddress: dummyAddress,
-    },
-    { pl: txSwapTokenPl, outputOwnerPkh: receiver1Pkh, outputTokenId: currTokenId + 1 }
+    }
   );
+  it("should succeed when a token need swap", async () => {
+    let verifyData = await nft.unlockTxSwapToken(
+      {
+        tx: txSwapToken,
+        pl: _.cloneDeep(txTransferPl),
+        codeWithGenesisPartHashSwap: codeWithGenesisPartHashSwap,
+        tokenAmountSwap: 1,
+        changePkh: dummyPkh,
+      },
+      {
+        privKeyTransfer: receiver1PrivKey,
+        inputOwnerPk: receiver1Pk,
+      },
+      {
+        index: 0,
+        txId: txGenesis.id,
+        txHex: txGenesis.serialize(),
+        byTxId: txIssue.id,
+        byTxHex: txIssue.serialize(),
+      }
+    );
+    let result = verifyData.verify();
+    expect(result.success, result.error).to.be.true;
+  });
 
-  // 创建 cancel swapToken Tx
+  //////////////////////////////////////////////////////////////// 创建 cancel swapToken Tx
   let txCancelSwapTokenPl = new PayloadNFT({
     dataType: SWAP,
     ownerPkh: receiver1Pkh,
@@ -151,66 +179,164 @@ describe("Test sCrypt contract NFT In Javascript", () => {
     tokenAmountSwap: 1,
   });
   let txCancelSwapToken = nft.makeTxCancelSwapToken(
-    { prevTxId: txSwapToken.id, outputIndex: 0, changeAddress: dummyAddress },
     {
-      pl: txCancelSwapTokenPl,
+      prevTxId: txSwapToken.id,
+      outputIndex: 0,
+      pl: _.cloneDeep(txCancelSwapTokenPl),
+    },
+    {
       outputOwnerPkh: receiver1Pkh,
       outputTokenId: currTokenId + 1,
+      changeAddress: dummyAddress,
     }
   );
+  it("should succeed when a token cancel swap", async () => {
+    let verifyData = await nft.unlockTxCancelSwapToken(
+      {
+        tx: txCancelSwapToken,
+        pl: _.cloneDeep(txCancelSwapTokenPl),
+        changePkh: dummyPkh,
+      },
+      {
+        privKeyTransfer: receiver1PrivKey,
+        inputOwnerPk: receiver1Pk,
+      },
+      {
+        index: 1,
+        txId: txIssue.id,
+        txHex: txIssue.serialize(),
+        byTxId: txSwapToken.id,
+        byTxHex: txSwapToken.serialize(),
+      }
+    );
+    let result = verifyData.verify();
+    expect(result.success, result.error).to.be.true;
+  });
 
+  //////////////////////////////////////////////////////////////// 创建sell Tx
   const satoshiAmountSell = 100000;
-  // 创建sell Tx
-  let txSellPl = new PayloadNFT({ dataType: TRANSFER, ownerPkh: receiver1Pkh, tokenId: currTokenId + 1 });
   let txSell = nft.makeTxSell(
     {
       prevTxId: txIssue.id,
       outputIndex: 1,
-      satoshiAmountSell: satoshiAmountSell,
-      changeAddress: dummyAddress,
+      pl: _.cloneDeep(txTransferPl),
     },
     {
-      pl: txSellPl,
+      satoshiAmountSell: satoshiAmountSell,
       outputOwnerPkh: receiver1Pkh,
       outputTokenId: currTokenId + 1,
+      changeAddress: dummyAddress,
     }
   );
+  it("should succeed when a token need sell", async () => {
+    let verifyData = await nft.unlockTxSell(
+      {
+        tx: txSell,
+        pl: _.cloneDeep(txTransferPl),
+        satoshiAmountSell: satoshiAmountSell,
+        changePkh: dummyPkh,
+      },
+      {
+        privKeyTransfer: receiver1PrivKey,
+        inputOwnerPk: receiver1Pk,
+      },
+      {
+        index: 0,
+        txId: txGenesis.id,
+        txHex: txGenesis.serialize(),
+        byTxId: txIssue.id,
+        byTxHex: txIssue.serialize(),
+      }
+    );
+    let result = verifyData.verify();
+    expect(result.success, result.error).to.be.true;
+  });
 
-  // 创建取消sell Tx
-  let txCancelSellPl = new PayloadNFT({ dataType: SELL, ownerPkh: receiver1Pkh, satoshiAmountSell: satoshiAmountSell, tokenId: currTokenId + 1 });
-
+  //////////////////////////////////////////////////////////////// 创建取消sell Tx
+  let txSellPl = new PayloadNFT({ dataType: SELL, ownerPkh: receiver1Pkh, satoshiAmountSell: satoshiAmountSell, tokenId: currTokenId + 1 });
   let txCancelSell = nft.makeTxCancelSell(
     {
       prevTxId: txSell.id,
       outputIndex: 0,
-      changeAddress: dummyAddress,
+      pl: _.cloneDeep(txSellPl),
     },
     {
-      pl: txCancelSellPl,
-      satoshiAmountSell: satoshiAmountSell,
       outputOwnerPkh: receiver1Pkh,
       outputTokenId: currTokenId + 1,
+      changeAddress: dummyAddress,
     }
   );
+  it("should succeed when a token cancel sell", async () => {
+    let verifyData = await nft.unlockTxCancelSell(
+      {
+        tx: txCancelSell,
+        pl: _.cloneDeep(txSellPl),
+        changePkh: dummyPkh,
+      },
+      {
+        privKeyTransfer: receiver1PrivKey,
+        inputOwnerPk: receiver1Pk,
+      },
+      {
+        index: 1,
+        txId: txIssue.id,
+        txHex: txIssue.serialize(),
+        byTxId: txSell.id,
+        byTxHex: txSell.serialize(),
+      }
+    );
+    let result = verifyData.verify();
+    expect(result.success, result.error).to.be.true;
+  });
 
+  //////////////////////////////////////////////////////////////// 创建购买buy Tx
   const buyerSatoshis = 5000;
-  // 创建购买buy Tx
-  let txBuyPl = new PayloadNFT({ dataType: SELL, ownerPkh: receiver1Pkh, satoshiAmountSell: satoshiAmountSell, tokenId: currTokenId + 1 });
   let txBuy = nft.makeTxBuy(
-    { prevTxId: txSell.id, outputIndex: 0, outputOwnerPkh: receiver2Pkh, buyerSatoshis: buyerSatoshis, changeAddress: dummyAddress },
-    { pl: txBuyPl, inputOwnerPkh: receiver1Pkh, satoshiAmountSell: satoshiAmountSell, outputTokenId: currTokenId + 1 }
+    {
+      prevTxId: txSell.id,
+      outputIndex: 0,
+      pl: _.cloneDeep(txSellPl),
+    },
+    {
+      outputOwnerPkh: receiver2Pkh,
+      buyerSatoshis: buyerSatoshis,
+      inputOwnerPkh: receiver1Pkh,
+      satoshiAmountSell: satoshiAmountSell,
+      outputTokenId: currTokenId + 1,
+      changeAddress: dummyAddress,
+    }
   );
+  it("should succeed when a token buy", async () => {
+    let verifyData = await nft.unlockTxBuy(
+      {
+        tx: txBuy,
+        pl: _.cloneDeep(txSellPl),
+        outputOwnerPkh: receiver2Pkh,
+        buyerSatoshis: buyerSatoshis,
+        changePkh: dummyPkh,
+      },
+      {
+        index: 1,
+        txId: txIssue.id,
+        txHex: txIssue.serialize(),
+        byTxId: txSell.id,
+        byTxHex: txSell.serialize(),
+      }
+    );
+    let result = verifyData.verify();
+    expect(result.success, result.error).to.be.true;
+  });
 
-  // 创建Burn Tx
+  //////////////////////////////////////////////////////////////// 创建Burn Tx
   let txTransferBurnPl = new PayloadNFT({ dataType: TRANSFER, ownerPkh: receiver1Pkh, tokenId: currTokenId + 1 });
   let txTransferBurn = nft.makeTxTransferBurn(
     {
       prevTxId: txIssue.id,
       outputIndex: 1,
-      changeAddress: dummyAddress,
+      pl: txTransferBurnPl,
     },
     {
-      pl: txTransferBurnPl,
+      changeAddress: dummyAddress,
     }
   );
   it("should success when receiver burn the token", async () => {
@@ -218,10 +344,10 @@ describe("Test sCrypt contract NFT In Javascript", () => {
     let verifyData = await nft.unlockTxTransferBurn(
       {
         tx: txTransferBurn,
+        pl: txTransferBurnPl,
         changePkh: dummyPkh,
       },
       {
-        pl: txTransferBurnPl,
         privKeyTransfer: receiver1PrivKey,
         inputOwnerPk: receiver1Pk,
       }
@@ -229,5 +355,4 @@ describe("Test sCrypt contract NFT In Javascript", () => {
     let result = verifyData.verify();
     expect(result.success, result.error).to.be.true;
   });
-
 });

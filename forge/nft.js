@@ -44,35 +44,33 @@ class NFT {
    * 创建nft forge, 如果参数deploy为true，则会使用真实utxos创建Tx，否则使用dummy utxos。
    *
    * @param {Boolean} deploy 是否是部署
-   *
    * @constructor NFT合约 forge
    */
   constructor(deploy = false) {
     const rabinPubKey = 0x3d7b971acdd7bff96ca34857e36685038d9c91e3af693cf9e71d170a8aac885b62dd4746fe7ebd7f3d7d16a51d63aa86a4256bdc853d999193ec3e614d4917e3dde9f6954d1784d5a2580f6fb130442e6a8ad0850aeaa100920fcab9176a05eb1aa3b5ee3e3dc75ae7cde3c25d350bba92956c8bacb0c735d39240c6442bab9dn;
     this.deploy = deploy;
 
+    let nftContractDesc;
+    let ftContractDesc;
     const compileBeforeTest = true;
     if (compileBeforeTest) {
       /* 实时编译 */
-      const NonFungibleTokenContractClass = buildContractClass(compileContract("nft.scrypt"));
-      this.nonFungibleToken = new NonFungibleTokenContractClass(rabinPubKey);
-
-      const FungibleTokenContractClass = buildContractClass(compileContract("token.scrypt"));
-      this.fungibleToken = new FungibleTokenContractClass(rabinPubKey);
+      nftContractDesc = compileContract("nft.scrypt");
+      ftContractDesc = compileContract("token.scrypt");
     } else {
       /* 预编译 */
-      const NonFungibleTokenContractClass = buildContractClass(loadDesc("nft_desc.json"));
-      this.nonFungibleToken = new NonFungibleTokenContractClass(rabinPubKey);
-
-      const FungibleTokenContractClass = buildContractClass(loadDesc("token_desc.json"));
-      this.fungibleToken = new FungibleTokenContractClass(rabinPubKey);
+      nftContractDesc = loadDesc("nft_desc.json");
+      ftContractDesc = loadDesc("token_desc.json");
     }
-    this.nftCodePart = this.nonFungibleToken.codePart.toASM();
-    this.tokenCodePart = this.fungibleToken.codePart.toASM();
+    const nftContractClass = buildContractClass(nftContractDesc);
+    const ftContractClass = buildContractClass(ftContractDesc);
+    this.nft = new nftContractClass(rabinPubKey);
+    this.ft = new ftContractClass(rabinPubKey);
+    this.nftCodePart = this.nft.codePart.toASM();
+    this.ftCodePart = this.ft.codePart.toASM();
   }
 
   /**
-   *
    * 创建一个新的Tx，用作GenesisTx溯源；发布时不需要这一步，直接用现成的utxo即可
    *
    * @param {Object} params 必要参数
@@ -147,15 +145,15 @@ class NFT {
    * @param {Object} params 必要参数
    * @param {Sha256} params.prevTxId 上一个issue utxo txid
    * @param {number} params.outputIndex 上一个issue utxo outputIndex
-   * @param {Ripemd160} params.outputOwnerPkh 新Token接收人Pkh
-   * @param {Ripemd160} params.changeAddress 找零地址
+   * @param {PayloadNFT} params.pl 输入锁定
    *
-   * @param {Object} envs 调用环境
-   * @param {PayloadNFT} envs.pl
-   * @param {number} envs.outputTokenId 下一个发行tokenId, 应当为inputTokenId+1
+   * @param {Object} outs 输出
+   * @param {Ripemd160} outs.outputOwnerPkh 新Token接收人Pkh
+   * @param {number} outs.outputTokenId 下一个发行tokenId, 应当为inputTokenId+1
+   * @param {Ripemd160} outs.changeAddress 找零地址
    * @returns {Tx} tx
    */
-  makeTxIssue({ prevTxId, outputIndex, outputOwnerPkh, changeAddress }, { pl, outputTokenId }) {
+  makeTxIssue({ prevTxId, outputIndex, pl }, { outputOwnerPkh, outputTokenId, changeAddress }) {
     const utxoLockingScript = [this.nftCodePart, this.nftGenesisPart, pl.dump()].join(" ");
 
     pl.tokenId = outputTokenId;
@@ -201,15 +199,15 @@ class NFT {
    * @param {Object} params 必要参数
    * @param {Sha256} params.prevTxId 上一个transfer utxo txid
    * @param {number} params.outputIndex 上一个transfer utxo outputIndex
-   * @param {Ripemd160} params.outputOwnerPkh Token新的所属人pkh
-   * @param {Ripemd160} params.changeAddress 找零地址
+   * @param {PayloadNFT} params.pl 输入锁定
    *
-   * @param {Object} envs 调用环境
-   * @param {PayloadNFT} envs.pl
-   * @param {number} envs.outputTokenId Token新的Id，输出锁定脚本中的tokenId, 应当和原Id保持一致
+   * @param {Object} outs 输出
+   * @param {Ripemd160} outs.outputOwnerPkh Token新的所属人pkh
+   * @param {number} outs.outputTokenId Token新的Id，输出锁定脚本中的tokenId, 应当和原Id保持一致
+   * @param {Ripemd160} outs.changeAddress 找零地址
    * @returns {Tx} tx
    */
-  makeTxTransfer({ prevTxId, outputIndex, outputOwnerPkh, changeAddress }, { pl, outputTokenId }) {
+  makeTxTransfer({ prevTxId, outputIndex, pl }, { outputOwnerPkh, outputTokenId, changeAddress }) {
     const utxoLockingScript = [this.nftCodePart, this.nftGenesisPart, pl.dump()].join(" ");
     pl.ownerPkh = outputOwnerPkh;
     pl.tokenId = outputTokenId;
@@ -247,17 +245,18 @@ class NFT {
    * @param {Object} params 必要参数
    * @param {Sha256} params.prevTxId 上一个transfer utxo txid
    * @param {number} params.outputIndex 上一个transfer utxo outputIndex
-   * @param {Sha256} params.codeWithGenesisPartHashSwap 希望Swap的Token溯源
-   * @param {number} params.tokenAmountSwap 希望Swap的Token数量Amount
-   * @param {Ripemd160} params.changeAddress 找零地址
+   * @param {PayloadNFT} params.pl 输入锁定
    *
-   * @param {Object} envs 调用环境
-   * @param {PayloadNFT} envs.pl
-   * @param {Ripemd160} envs.outputOwnerPkh Token输出的所属人pkh，应当和原所属人一致
-   * @param {number} envs.outputTokenId Token新的Id，输出锁定脚本中的tokenId, 应当和原Id保持一致
+   * @param {Object} outs 输出
+   * @param {Sha256} outs.codeWithGenesisPartHashSwap 希望Swap的Token溯源
+   * @param {number} outs.tokenAmountSwap 希望Swap的Token数量Amount
+   * @param {Ripemd160} outs.outputOwnerPkh Token输出的所属人pkh，应当和原所属人一致
+   * @param {number} outs.outputTokenId Token新的Id，输出锁定脚本中的tokenId, 应当和原Id保持一致
+   * @param {Ripemd160} outs.changeAddress 找零地址
+   *
    * @returns {Tx} tx
    */
-  makeTxSwapToken({ prevTxId, outputIndex, codeWithGenesisPartHashSwap, tokenAmountSwap, changeAddress }, { pl, outputOwnerPkh, outputTokenId }) {
+  makeTxSwapToken({ prevTxId, outputIndex, pl }, { codeWithGenesisPartHashSwap, tokenAmountSwap, outputOwnerPkh, outputTokenId, changeAddress }) {
     const utxoLockingScript = [this.nftCodePart, this.nftGenesisPart, pl.dump()].join(" ");
 
     pl.dataType = SWAP;
@@ -299,18 +298,16 @@ class NFT {
    * @param {Object} params 必要参数
    * @param {Sha256} params.prevTxId 上一个transfer utxo txid
    * @param {number} params.outputIndex 上一个transfer utxo outputIndex
-   * @param {Ripemd160} params.changeAddress 找零地址
+   * @param {PayloadNFT} params.pl 输入锁定
    *
-   * @param {Object} envs 调用环境
-   * @param {PayloadNFT} envs.pl
-   * @param {Ripemd160} envs.outputOwnerPkh Token输出的所属人pkh，应当和原所属人一致
-   * @param {number} envs.outputTokenId Token新的Id，输出锁定脚本中的tokenId, 应当和原Id保持一致
+   * @param {Object} outs 输出
+   * @param {Ripemd160} outs.outputOwnerPkh Token输出的所属人pkh，应当和原所属人一致
+   * @param {number} outs.outputTokenId Token新的Id，输出锁定脚本中的tokenId, 应当和原Id保持一致
+   * @param {Ripemd160} outs.changeAddress 找零地址
+   *
    * @returns {Tx} tx
    */
-  makeTxCancelSwapToken(
-    { prevTxId, outputIndex, changeAddress },
-    { pl, outputOwnerPkh, outputTokenId }
-  ) {
+  makeTxCancelSwapToken({ prevTxId, outputIndex, pl }, { outputOwnerPkh, outputTokenId, changeAddress }) {
     const utxoLockingScript = [this.nftCodePart, this.nftGenesisPart, pl.dump()].join(" ");
 
     pl.dataType = TRANSFER;
@@ -360,13 +357,14 @@ class NFT {
    * @param {number} side.tokenGenesisOutputIndex 实际Swap的Token溯源outputIndex
    * @param {number} side.tokenGenesisIssueOutputIndex 实际Swap的Token溯源outputIdx
    *
-   * @param {Object} envs 调用环境
-   * @param {Sha256} envs.codeWithGenesisPartHashSwap 希望Swap的Token溯源
-   * @param {number} envs.tokenAmountSwap 希望Swap的Token数量Amount
-   * @param {Ripemd160} envs.inputOwnerPkh Token原来的所属人pkh
-   * @param {number} envs.inputTokenId Token原来的Id，输入锁定脚本中的tokenId
-   * @param {Ripemd160} envs.outputOwnerPkh Token输出的所属人pkh，应当和原所属人一致
-   * @param {number} envs.outputTokenId Token新的Id，输出锁定脚本中的tokenId, 应当和原Id保持一致
+   * @param {Object} outs 输出
+   * @param {Sha256} outs.codeWithGenesisPartHashSwap 希望Swap的Token溯源
+   * @param {number} outs.tokenAmountSwap 希望Swap的Token数量Amount
+   * @param {Ripemd160} outs.inputOwnerPkh Token原来的所属人pkh
+   * @param {number} outs.inputTokenId Token原来的Id，输入锁定脚本中的tokenId
+   * @param {Ripemd160} outs.outputOwnerPkh Token输出的所属人pkh，应当和原所属人一致
+   * @param {number} outs.outputTokenId Token新的Id，输出锁定脚本中的tokenId, 应当和原Id保持一致
+   *
    * @returns {Tx} tx
    */
   makeTxFinishSwapToken(
@@ -388,10 +386,10 @@ class NFT {
       reverseEndian(tokenGenesisPrevTxId) + num2bin(tokenGenesisOutputIndex, DataLen4) + num2bin(tokenGenesisIssueOutputIndex, DataLen4);
 
     let plToken = new PayloadToken({ dataType: TRANSFER, ownerPkh: inputOwnerPkh, tokenAmount: inputTokenAmount });
-    const utxoLockingScriptToken = [this.tokenCodePart, tokenGenesisPart, plToken.dump()].join(" ");
+    const utxoLockingScriptToken = [this.ftCodePart, tokenGenesisPart, plToken.dump()].join(" ");
 
     plToken.ownerPkh = outputOwnerPkh;
-    const newLockingScript1 = [this.tokenCodePart, tokenGenesisPart, plToken.dump()].join(" ");
+    const newLockingScript1 = [this.ftCodePart, tokenGenesisPart, plToken.dump()].join(" ");
 
     let tx = createDummyPayByOthersTx();
     if (this.deploy) {
@@ -435,16 +433,17 @@ class NFT {
    * @param {Object} params 必要参数
    * @param {Sha256} params.prevTxId 上一个transfer utxo txid
    * @param {number} params.outputIndex 上一个transfer utxo outputIndex
-   * @param {number} params.satoshiAmountSell 出售价格
-   * @param {Ripemd160} params.changeAddress 找零地址
+   * @param {PayloadNFT} params.pl 输入锁定
    *
-   * @param {Object} envs 调用环境
-   * @param {PayloadNFT} envs.pl
-   * @param {Ripemd160} envs.outputOwnerPkh Token输出的所属人pkh，应当和原所属人一致
-   * @param {number} envs.outputTokenId Token新的Id，输出锁定脚本中的tokenId, 应当和原Id保持一致
+   * @param {Object} outs 输出
+   * @param {number} outs.satoshiAmountSell 出售价格
+   * @param {Ripemd160} outs.outputOwnerPkh Token输出的所属人pkh，应当和原所属人一致
+   * @param {number} outs.outputTokenId Token新的Id，输出锁定脚本中的tokenId, 应当和原Id保持一致
+   * @param {Ripemd160} outs.changeAddress 找零地址
+   *
    * @returns {Tx} tx
    */
-  makeTxSell({ prevTxId, outputIndex, satoshiAmountSell, changeAddress }, { pl, outputOwnerPkh, outputTokenId }) {
+  makeTxSell({ prevTxId, outputIndex, pl }, { satoshiAmountSell, outputOwnerPkh, outputTokenId, changeAddress }) {
     const utxoLockingScript = [this.nftCodePart, this.nftGenesisPart, pl.dump()].join(" ");
 
     pl.dataType = SELL;
@@ -485,16 +484,16 @@ class NFT {
    * @param {Object} params 必要参数
    * @param {Sha256} params.prevTxId 上一个selling utxo txid
    * @param {number} params.outputIndex 上一个selling utxo outputIndex
-   * @param {Ripemd160} params.changeAddress 找零地址
+   * @param {PayloadNFT} params.pl 输入锁定
    *
-   * @param {Object} envs 调用环境
-   * @param {PayloadNFT} envs.pl
-   * @param {number} envs.satoshiAmountSell 出售价格
-   * @param {Ripemd160} envs.outputOwnerPkh Token输出的所属人pkh，应当和原所属人一致
-   * @param {number} envs.outputTokenId Token新的Id，输出锁定脚本中的tokenId, 应当和原Id保持一致
+   * @param {Object} outs 输出
+   * @param {Ripemd160} outs.outputOwnerPkh Token输出的所属人pkh，应当和原所属人一致
+   * @param {number} outs.outputTokenId Token新的Id，输出锁定脚本中的tokenId, 应当和原Id保持一致
+   * @param {Ripemd160} outs.changeAddress 找零地址
+   *
    * @returns {Tx} tx
    */
-  makeTxCancelSell({ prevTxId, outputIndex, changeAddress }, { pl, satoshiAmountSell, outputOwnerPkh, outputTokenId }) {
+  makeTxCancelSell({ prevTxId, outputIndex, pl }, { outputOwnerPkh, outputTokenId, changeAddress }) {
     const utxoLockingScript = [this.nftCodePart, this.nftGenesisPart, pl.dump()].join(" ");
 
     pl.dataType = TRANSFER;
@@ -534,18 +533,19 @@ class NFT {
    * @param {Object} params 必要参数
    * @param {Sha256} params.prevTxId 上一个selling utxo txid
    * @param {number} params.outputIndex 上一个selling utxo outputIndex
-   * @param {Ripemd160} params.outputOwnerPkh Token输出给购买者pkh
-   * @param {number} params.buyerSatoshis Token输出给购买者的bsv
-   * @param {Ripemd160} params.changeAddress 找零地址
+   * @param {PayloadNFT} params.pl 输入锁定
    *
-   * @param {Object} envs 调用环境
-   * @param {PayloadNFT} envs.pl
-   * @param {Ripemd160} envs.inputOwnerPkh Token原来的所属人pkh
-   * @param {number} envs.satoshiAmountSell 出售价格
-   * @param {number} envs.outputTokenId Token新的Id，输出锁定脚本中的tokenId, 应当和原Id保持一致
+   * @param {Object} outs 输出
+   * @param {Ripemd160} outs.outputOwnerPkh Token输出给购买者pkh
+   * @param {number} outs.buyerSatoshis Token输出给购买者的bsv
+   * @param {Ripemd160} outs.inputOwnerPkh Token原来的所属人pkh
+   * @param {number} outs.satoshiAmountSell 出售价格
+   * @param {number} outs.outputTokenId Token新的Id，输出锁定脚本中的tokenId, 应当和原Id保持一致
+   * @param {Ripemd160} outs.changeAddress 找零地址
+   *
    * @returns {Tx} tx
    */
-  makeTxBuy({ prevTxId, outputIndex, outputOwnerPkh, buyerSatoshis, changeAddress }, { pl, inputOwnerPkh, satoshiAmountSell, outputTokenId }) {
+  makeTxBuy({ prevTxId, outputIndex, pl }, { outputOwnerPkh, buyerSatoshis, inputOwnerPkh, satoshiAmountSell, outputTokenId, changeAddress }) {
     const utxoLockingScript = [this.nftCodePart, this.nftGenesisPart, pl.dump()].join(" ");
 
     pl.dataType = TRANSFER;
@@ -589,13 +589,14 @@ class NFT {
    * @param {Object} params 必要参数
    * @param {Sha256} params.prevTxId 上一个transfer utxo txid
    * @param {number} params.outputIndex 上一个transfer utxo outputIndex
+   * @param {PayloadNFT} params.pl 输入锁定
+   *
+   * @param {Object} outs 输出
    * @param {Ripemd160} params.changeAddress 找零地址
    *
-   * @param {Object} envs 调用环境
-   * @param {PayloadNFT} envs.pl
    * @returns {Tx} tx
    */
-  makeTxTransferBurn({ prevTxId, outputIndex, changeAddress }, { pl }) {
+  makeTxTransferBurn({ prevTxId, outputIndex, pl }, { changeAddress }) {
     const utxoLockingScript = [this.nftCodePart, this.nftGenesisPart, pl.dump()].join(" ");
 
     let tx = createDummyPayByOthersTx();
@@ -620,25 +621,16 @@ class NFT {
 
   ////////////////////////////////////////////////////////////////
   /**
-   * @typedef {Object} IssueEnvs 调用环境
-   * @property {PayloadNFT} pl
-   * @property {PrivateKey} privKeyIssuer 发行者私钥
-   * @property {Pubkey} publicKeyIssuer 发行者公钥
-   * @property {Ripemd160} inputIssuerPkh 必须是输入锁定脚本中的发行者公钥Hash
-   * @property {number} inputTokenId 必须是输入锁定脚本中的tokenId
-   */
-
-  /**
    * unlockTxIssue
    * 为之前创建的issue Tx生成解锁脚本，并签名其他输入
    *
    * @param {Object} params 必要参数
    * @param {Tx} params.tx 用makeTxIssue创建的Tx对象
+   * @param {PayloadNFT} params.pl 输入锁定
    * @param {Ripemd160} params.outputOwnerPkh 接收人pkh
    * @param {Ripemd160} params.changePkh 找零地址
    *
    * @param {Object} envs 调用环境
-   * @param {PayloadNFT} envs.pl
    * @param {PrivateKey} envs.privKeyIssuer 发行者私钥
    * @param {Pubkey} envs.publicKeyIssuer 发行者公钥
    *
@@ -646,24 +638,24 @@ class NFT {
    *
    * @returns {Object} Contract
    */
-  async unlockTxIssue({ tx, outputOwnerPkh, changePkh }, { pl, privKeyIssuer, publicKeyIssuer }, satotxData) {
+  async unlockTxIssue({ tx, pl, outputOwnerPkh, changePkh }, { privKeyIssuer, publicKeyIssuer }, satotxData) {
     // 设置校验环境
     const changeAmount = tx.inputAmount - FEE - issueSatoshis - transferSatoshis;
     const curInputIndex = tx.inputs.length - 1;
 
-    this.nonFungibleToken.setDataPart(this.nftGenesisPart + " " + pl.dump());
-    this.nonFungibleToken.txContext = { tx: tx, inputIndex: curInputIndex, inputSatoshis: issueSatoshis };
+    this.nft.setDataPart(this.nftGenesisPart + " " + pl.dump());
+    this.nft.txContext = { tx: tx, inputIndex: curInputIndex, inputSatoshis: issueSatoshis };
 
     // 计算preimage
-    const preimage = getPreimage(tx, this.nonFungibleToken.lockingScript.toASM(), issueSatoshis, curInputIndex, sighashType);
+    const preimage = getPreimage(tx, this.nft.lockingScript.toASM(), issueSatoshis, curInputIndex, sighashType);
     // 计算签名
-    const sig = signTx(tx, privKeyIssuer, this.nonFungibleToken.lockingScript.toASM(), issueSatoshis, curInputIndex, sighashType);
+    const sig = signTx(tx, privKeyIssuer, this.nft.lockingScript.toASM(), issueSatoshis, curInputIndex, sighashType);
 
     // 获取Oracle签名
     let sigInfo = await satoTxSigUTXOSpendBy(satotxData);
 
     // 创建解锁
-    let contractObj = this.nonFungibleToken.issue(
+    let contractObj = this.nft.issue(
       new SigHashPreimage(toHex(preimage)),
       BigInt("0x" + sigInfo.sigBE),
       new Bytes(sigInfo.payload),
@@ -696,11 +688,11 @@ class NFT {
    *
    * @param {Object} params 必要参数
    * @param {Tx} params.tx 用makeTxTransfer创建的Tx对象
+   * @param {PayloadNFT} params.pl 输入锁定
    * @param {Ripemd160} params.outputOwnerPkh 新所属人的公钥Hash
    * @param {Ripemd160} params.changePkh 找零地址
    *
    * @param {Object} envs 调用环境
-   * @param {PayloadNFT} envs.pl
    * @param {PrivateKey} envs.privKeyTransfer 之前所属人的私钥
    * @param {PubKey} envs.inputOwnerPk 之前所属人的公钥
    *
@@ -708,24 +700,24 @@ class NFT {
    *
    * @returns {Object} Contract
    */
-  async unlockTxTransfer({ tx, outputOwnerPkh, changePkh }, { pl, privKeyTransfer, inputOwnerPk }, satotxData) {
+  async unlockTxTransfer({ tx, pl, outputOwnerPkh, changePkh }, { privKeyTransfer, inputOwnerPk }, satotxData) {
     const changeAmount = tx.inputAmount - FEE - transferSatoshis;
     const curInputIndex = tx.inputs.length - 1;
 
-    this.nonFungibleToken.setDataPart(this.nftGenesisPart + " " + pl.dump());
-    this.nonFungibleToken.txContext = { tx: tx, inputIndex: curInputIndex, inputSatoshis: transferSatoshis };
+    this.nft.setDataPart(this.nftGenesisPart + " " + pl.dump());
+    this.nft.txContext = { tx: tx, inputIndex: curInputIndex, inputSatoshis: transferSatoshis };
 
     // 计算preimage
-    const preimage = getPreimage(tx, this.nonFungibleToken.lockingScript.toASM(), transferSatoshis, curInputIndex, sighashType);
+    const preimage = getPreimage(tx, this.nft.lockingScript.toASM(), transferSatoshis, curInputIndex, sighashType);
 
     // 计算签名
-    const sig = signTx(tx, privKeyTransfer, this.nonFungibleToken.lockingScript.toASM(), transferSatoshis, curInputIndex, sighashType);
+    const sig = signTx(tx, privKeyTransfer, this.nft.lockingScript.toASM(), transferSatoshis, curInputIndex, sighashType);
 
     // 获取Oracle签名
     let sigInfo = await satoTxSigUTXOSpendBy(satotxData);
 
     // 创建解锁
-    let contractObj = this.nonFungibleToken.transfer(
+    let contractObj = this.nft.transfer(
       new SigHashPreimage(toHex(preimage)),
       BigInt("0x" + sigInfo.sigBE),
       new Bytes(sigInfo.payload),
@@ -756,28 +748,28 @@ class NFT {
    *
    * @param {Object} params 必要参数
    * @param {Tx} params.tx 用makeTxTransferBurn创建的Tx对象
+   * @param {PayloadNFT} params.pl 输入锁定
    * @param {Ripemd160} params.changePkh 找零地址
    *
    * @param {Object} envs 调用环境
-   * @param {PayloadNFT} envs.pl
    * @param {PrivateKey} envs.privKeyTransfer 之前所属人的私钥
    * @param {PubKey} envs.inputOwnerPk 之前所属人的公钥
    *
    * @returns {Object} Contract
    */
-  async unlockTxTransferBurn({ tx, changePkh }, { pl, privKeyTransfer, inputOwnerPk }) {
+  async unlockTxTransferBurn({ tx, pl, changePkh }, { privKeyTransfer, inputOwnerPk }) {
     const changeAmount = tx.inputAmount - FEE;
     const curInputIndex = tx.inputs.length - 1;
 
-    this.nonFungibleToken.setDataPart(this.nftGenesisPart + " " + pl.dump());
-    this.nonFungibleToken.txContext = { tx: tx, inputIndex: curInputIndex, inputSatoshis: transferSatoshis };
+    this.nft.setDataPart(this.nftGenesisPart + " " + pl.dump());
+    this.nft.txContext = { tx: tx, inputIndex: curInputIndex, inputSatoshis: transferSatoshis };
 
     // 计算preimage
-    const preimage = getPreimage(tx, this.nonFungibleToken.lockingScript.toASM(), transferSatoshis, curInputIndex, sighashType);
+    const preimage = getPreimage(tx, this.nft.lockingScript.toASM(), transferSatoshis, curInputIndex, sighashType);
     // 计算签名
-    const sig = signTx(tx, privKeyTransfer, this.nonFungibleToken.lockingScript.toASM(), transferSatoshis, curInputIndex, sighashType);
+    const sig = signTx(tx, privKeyTransfer, this.nft.lockingScript.toASM(), transferSatoshis, curInputIndex, sighashType);
 
-    return this.nonFungibleToken.burn(
+    return this.nft.burn(
       new SigHashPreimage(toHex(preimage)),
       new Sig(toHex(sig)),
       new PubKey(toHex(inputOwnerPk)),
@@ -792,12 +784,12 @@ class NFT {
    *
    * @param {Object} params 必要参数
    * @param {Tx} params.tx 用makeTxSwapToken创建的Tx对象
+   * @param {PayloadNFT} params.pl 输入锁定
    * @param {Sha256} params.codeWithGenesisPartHashSwap 希望Swap的Token溯源
    * @param {number} params.tokenAmountSwap 希望Swap的Token数量Amount
    * @param {Ripemd160} params.changePkh 找零地址
    *
    * @param {Object} envs 调用环境
-   * @param {PayloadNFT} envs.pl
    * @param {PrivateKey} envs.privKeyTransfer 之前所属人的私钥
    * @param {PubKey} envs.inputOwnerPk 之前所属人的公钥
    *
@@ -806,24 +798,24 @@ class NFT {
    * @returns {Object} Contract
    */
 
-  async unlockTxSwapToken({ tx, codeWithGenesisPartHashSwap, tokenAmountSwap, changePkh }, { pl, privKeyTransfer, inputOwnerPk }, satotxData) {
+  async unlockTxSwapToken({ tx, pl, codeWithGenesisPartHashSwap, tokenAmountSwap, changePkh }, { privKeyTransfer, inputOwnerPk }, satotxData) {
     const changeAmount = tx.inputAmount - FEE - transferSatoshis;
     const curInputIndex = tx.inputs.length - 1;
 
-    this.nonFungibleToken.setDataPart(this.nftGenesisPart + " " + pl.dump());
-    this.nonFungibleToken.txContext = { tx: tx, inputIndex: curInputIndex, inputSatoshis: transferSatoshis };
+    this.nft.setDataPart(this.nftGenesisPart + " " + pl.dump());
+    this.nft.txContext = { tx: tx, inputIndex: curInputIndex, inputSatoshis: transferSatoshis };
 
     // 计算preimage
-    const preimage = getPreimage(tx, this.nonFungibleToken.lockingScript.toASM(), transferSatoshis, curInputIndex, sighashType);
+    const preimage = getPreimage(tx, this.nft.lockingScript.toASM(), transferSatoshis, curInputIndex, sighashType);
 
     // 计算签名
-    const sig = signTx(tx, privKeyTransfer, this.nonFungibleToken.lockingScript.toASM(), transferSatoshis, curInputIndex, sighashType);
+    const sig = signTx(tx, privKeyTransfer, this.nft.lockingScript.toASM(), transferSatoshis, curInputIndex, sighashType);
 
     // 获取Oracle签名
     let sigInfo = await satoTxSigUTXOSpendBy(satotxData);
 
     // 创建解锁
-    let contractObj = this.nonFungibleToken.makeSwapToken(
+    let contractObj = this.nft.makeSwapToken(
       new SigHashPreimage(toHex(preimage)),
       BigInt("0x" + sigInfo.sigBE),
       new Bytes(sigInfo.payload),
@@ -856,10 +848,10 @@ class NFT {
    *
    * @param {Object} params 必要参数
    * @param {Tx} params.tx 用makeTxCancelSwapToken创建的Tx对象
+   * @param {PayloadNFT} params.pl 输入锁定
    * @param {Ripemd160} params.changePkh 找零地址
    *
    * @param {Object} envs 调用环境
-   * @param {PayloadNFT} envs.pl
    * @param {PrivateKey} envs.privKeyTransfer 之前所属人的私钥
    * @param {PubKey} envs.inputOwnerPk 之前所属人的公钥
    *
@@ -868,24 +860,24 @@ class NFT {
    * @returns {Object} Contract
    */
 
-  async unlockTxCancelSwapToken({ tx, changePkh }, { pl, privKeyTransfer, inputOwnerPk }, satotxData) {
+  async unlockTxCancelSwapToken({ tx, pl, changePkh }, { privKeyTransfer, inputOwnerPk }, satotxData) {
     const changeAmount = tx.inputAmount - FEE - transferSatoshis;
     const curInputIndex = tx.inputs.length - 1;
 
-    this.nonFungibleToken.setDataPart(this.nftGenesisPart + " " + pl.dump());
-    this.nonFungibleToken.txContext = { tx: tx, inputIndex: curInputIndex, inputSatoshis: transferSatoshis };
+    this.nft.setDataPart(this.nftGenesisPart + " " + pl.dump());
+    this.nft.txContext = { tx: tx, inputIndex: curInputIndex, inputSatoshis: transferSatoshis };
 
     // 计算preimage
-    const preimage = getPreimage(tx, this.nonFungibleToken.lockingScript.toASM(), transferSatoshis, curInputIndex, sighashType);
+    const preimage = getPreimage(tx, this.nft.lockingScript.toASM(), transferSatoshis, curInputIndex, sighashType);
 
     // 计算签名
-    const sig = signTx(tx, privKeyTransfer, this.nonFungibleToken.lockingScript.toASM(), transferSatoshis, curInputIndex, sighashType);
+    const sig = signTx(tx, privKeyTransfer, this.nft.lockingScript.toASM(), transferSatoshis, curInputIndex, sighashType);
 
     // 获取Oracle签名
     let sigInfo = await satoTxSigUTXOSpendBy(satotxData);
 
     // 创建解锁
-    let contractObj = this.nonFungibleToken.cancelSwapToken(
+    let contractObj = this.nft.cancelSwapToken(
       new SigHashPreimage(toHex(preimage)),
       BigInt("0x" + sigInfo.sigBE),
       new Bytes(sigInfo.payload),
@@ -893,6 +885,183 @@ class NFT {
 
       new Sig(toHex(sig)),
       new PubKey(toHex(inputOwnerPk)),
+
+      new Ripemd160(toHex(changePkh)),
+      changeAmount
+    );
+
+    if (this.deploy) {
+      // unlock other p2pkh inputs
+      for (let i = 0; i < curInputIndex; i++) {
+        unlockP2PKHInput(privateKey, tx, i, sighashType);
+      }
+      const unlockingScript = contractObj.toScript();
+      tx.inputs[curInputIndex].setScript(unlockingScript);
+    }
+
+    return contractObj;
+  }
+
+  /**
+   * unlockTxSell
+   * 为之前创建的Sell Tx生成解锁脚本，并签名其他输入
+   *
+   * @param {Object} params 必要参数
+   * @param {Tx} params.tx 用makeTxSell创建的Tx对象
+   * @param {PayloadNFT} params.pl 输入锁定
+   * @param {number} params.satoshiAmountSell 出售价格
+   * @param {Ripemd160} params.changePkh 找零地址
+   *
+   * @param {Object} envs 调用环境
+   * @param {PrivateKey} envs.privKeyTransfer 之前所属人的私钥
+   * @param {PubKey} envs.inputOwnerPk 之前所属人的公钥
+   *
+   * @param {Object} satotxData
+   *
+   * @returns {Object} Contract
+   */
+
+  async unlockTxSell({ tx, pl, satoshiAmountSell, changePkh }, { privKeyTransfer, inputOwnerPk }, satotxData) {
+    const changeAmount = tx.inputAmount - FEE - transferSatoshis;
+    const curInputIndex = tx.inputs.length - 1;
+
+    this.nft.setDataPart(this.nftGenesisPart + " " + pl.dump());
+    this.nft.txContext = { tx: tx, inputIndex: curInputIndex, inputSatoshis: transferSatoshis };
+
+    // 计算preimage
+    const preimage = getPreimage(tx, this.nft.lockingScript.toASM(), transferSatoshis, curInputIndex, sighashType);
+
+    // 计算签名
+    const sig = signTx(tx, privKeyTransfer, this.nft.lockingScript.toASM(), transferSatoshis, curInputIndex, sighashType);
+
+    // 获取Oracle签名
+    let sigInfo = await satoTxSigUTXOSpendBy(satotxData);
+
+    // 创建解锁
+    let contractObj = this.nft.sell(
+      new SigHashPreimage(toHex(preimage)),
+      BigInt("0x" + sigInfo.sigBE),
+      new Bytes(sigInfo.payload),
+      new Bytes(sigInfo.padding),
+
+      new Sig(toHex(sig)),
+      new PubKey(toHex(inputOwnerPk)),
+
+      satoshiAmountSell,
+      new Ripemd160(toHex(changePkh)),
+      changeAmount
+    );
+
+    if (this.deploy) {
+      // unlock other p2pkh inputs
+      for (let i = 0; i < curInputIndex; i++) {
+        unlockP2PKHInput(privateKey, tx, i, sighashType);
+      }
+      const unlockingScript = contractObj.toScript();
+      tx.inputs[curInputIndex].setScript(unlockingScript);
+    }
+
+    return contractObj;
+  }
+
+  /**
+   * unlockTxCancelSell
+   * 为之前创建的CancelSell Tx生成解锁脚本，并签名其他输入
+   *
+   * @param {Object} params 必要参数
+   * @param {Tx} params.tx 用makeTxCancelSell创建的Tx对象
+   * @param {PayloadNFT} params.pl 输入锁定
+   * @param {Ripemd160} params.changePkh 找零地址
+   *
+   * @param {Object} envs 调用环境
+   * @param {PrivateKey} envs.privKeyTransfer 之前所属人的私钥
+   * @param {PubKey} envs.inputOwnerPk 之前所属人的公钥
+   *
+   * @param {Object} satotxData
+   *
+   * @returns {Object} Contract
+   */
+
+  async unlockTxCancelSell({ tx, pl, changePkh }, { privKeyTransfer, inputOwnerPk }, satotxData) {
+    const changeAmount = tx.inputAmount - FEE - transferSatoshis;
+    const curInputIndex = tx.inputs.length - 1;
+
+    this.nft.setDataPart(this.nftGenesisPart + " " + pl.dump());
+    this.nft.txContext = { tx: tx, inputIndex: curInputIndex, inputSatoshis: transferSatoshis };
+
+    // 计算preimage
+    const preimage = getPreimage(tx, this.nft.lockingScript.toASM(), transferSatoshis, curInputIndex, sighashType);
+
+    // 计算签名
+    const sig = signTx(tx, privKeyTransfer, this.nft.lockingScript.toASM(), transferSatoshis, curInputIndex, sighashType);
+
+    // 获取Oracle签名
+    let sigInfo = await satoTxSigUTXOSpendBy(satotxData);
+
+    // 创建解锁
+    let contractObj = this.nft.cancelSell(
+      new SigHashPreimage(toHex(preimage)),
+      BigInt("0x" + sigInfo.sigBE),
+      new Bytes(sigInfo.payload),
+      new Bytes(sigInfo.padding),
+
+      new Sig(toHex(sig)),
+      new PubKey(toHex(inputOwnerPk)),
+
+      new Ripemd160(toHex(changePkh)),
+      changeAmount
+    );
+
+    if (this.deploy) {
+      // unlock other p2pkh inputs
+      for (let i = 0; i < curInputIndex; i++) {
+        unlockP2PKHInput(privateKey, tx, i, sighashType);
+      }
+      const unlockingScript = contractObj.toScript();
+      tx.inputs[curInputIndex].setScript(unlockingScript);
+    }
+
+    return contractObj;
+  }
+
+  /**
+   * unlockTxBuy
+   * 为之前创建的Buy Tx生成解锁脚本，并签名其他输入
+   *
+   * @param {Object} params 必要参数
+   * @param {Tx} params.tx 用makeTxBuy创建的Tx对象
+   * @param {PayloadNFT} params.pl 输入锁定
+   * @param {Ripemd160} params.outputOwnerPkh 购买人地址
+   * @param {number} params.buyerSatoshis 购买存入bsv
+   * @param {Ripemd160} params.changePkh 找零地址
+   *
+   * @param {Object} satotxData
+   *
+   * @returns {Object} Contract
+   */
+
+  async unlockTxBuy({ tx, pl, outputOwnerPkh, buyerSatoshis, changePkh }, satotxData) {
+    const changeAmount = tx.inputAmount - FEE - buyerSatoshis - pl.satoshiAmountSell - transferSatoshis;
+    const curInputIndex = tx.inputs.length - 1;
+
+    this.nft.setDataPart(this.nftGenesisPart + " " + pl.dump());
+    this.nft.txContext = { tx: tx, inputIndex: curInputIndex, inputSatoshis: transferSatoshis };
+
+    // 计算preimage
+    const preimage = getPreimage(tx, this.nft.lockingScript.toASM(), transferSatoshis, curInputIndex, sighashType);
+
+    // 获取Oracle签名
+    let sigInfo = await satoTxSigUTXOSpendBy(satotxData);
+
+    // 创建解锁
+    let contractObj = this.nft.buy(
+      new SigHashPreimage(toHex(preimage)),
+      BigInt("0x" + sigInfo.sigBE),
+      new Bytes(sigInfo.payload),
+      new Bytes(sigInfo.padding),
+
+      new Ripemd160(toHex(outputOwnerPkh)),
+      buyerSatoshis,
 
       new Ripemd160(toHex(changePkh)),
       changeAmount
