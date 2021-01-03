@@ -1,179 +1,193 @@
-const { bsv, buildContractClass, getPreimage, toHex, num2bin, Ripemd160, SigHashPreimage, signTx, PubKey, Sig, Bytes } = require("scryptlib");
+const _ = require("lodash");
+const { bsv, toHex, num2bin, Ripemd160, SigHashPreimage, PubKey, Sig, Bytes } = require("scryptlib");
 const {
   DataLen,
   DataLen4,
   DataLen8,
-  loadDesc,
   createLockingTx,
   createPayByOthersTx,
   sendTx,
   reverseEndian,
-  satoTxSigUTXOSpendBy,
   unlockP2PKHInput,
   showError,
 } = require("../helper");
-const { NFT } = require("../../forge/nft");
+const { NFT } = require("../forge/nft");
+const { PayloadNFT, ISSUE, TRANSFER, SWAP, SELL } = require("../forge/payload_nft");
 const WhatsOnChain = require("whatsonchain");
 
-// const { privateKey } = require("../privateKey");
+const { privateKey } = require("../privateKey");
+
+const dummyAddress = privateKey.toAddress();
+const dummyPublicKey = bsv.PublicKey.fromPrivateKey(privateKey);
+const dummyPkh = bsv.crypto.Hash.sha256ripemd160(dummyPublicKey.toBuffer());
 
 (async () => {
   const woc = new WhatsOnChain("testnet");
-  const privateKeyIssuer = new bsv.PrivateKey.fromWIF("cPbFsSjFjCbfzTRc8M4nKNGhVJspwnPQAcDhdJgVr3Pdwpqq7LfA");
-  const publicKeyIssuer = bsv.PublicKey.fromPrivateKey(privateKeyIssuer);
-  const issuerPkh = bsv.crypto.Hash.sha256ripemd160(publicKeyIssuer.toBuffer());
+  const issuerPrivKey = new bsv.PrivateKey.fromWIF("cPbFsSjFjCbfzTRc8M4nKNGhVJspwnPQAcDhdJgVr3Pdwpqq7LfA");
+  const issuerPk = bsv.PublicKey.fromPrivateKey(issuerPrivKey);
+  const issuerPkh = bsv.crypto.Hash.sha256ripemd160(issuerPk.toBuffer());
   console.log("pkhIssuer:", toHex(issuerPkh)); // d3e990e3d6802a033c9b8d3c2ceda56dc0638126
 
-  const privateKey = privateKeyIssuer;
-
-  const privateKeyReceiver1 = new bsv.PrivateKey.fromWIF("cRCsQuoGatjXDdzjYhb1r3RH8LDqCEvjNc8gYS7HcnodPf44guQG");
-  const publicKeyReceiver1 = bsv.PublicKey.fromPrivateKey(privateKeyReceiver1);
-  const receiver1Pkh = bsv.crypto.Hash.sha256ripemd160(publicKeyReceiver1.toBuffer());
+  const receiver1PrivKey = new bsv.PrivateKey.fromWIF("cRCsQuoGatjXDdzjYhb1r3RH8LDqCEvjNc8gYS7HcnodPf44guQG");
+  const receiver1Pk = bsv.PublicKey.fromPrivateKey(receiver1PrivKey);
+  const receiver1Pkh = bsv.crypto.Hash.sha256ripemd160(receiver1Pk.toBuffer());
   console.log("pkhReceiver1:", toHex(receiver1Pkh)); // 2edcd18e10de1a646169b19e3c83ec404c8685bd
 
-  const privateKeyReceiver2 = new bsv.PrivateKey.fromWIF("cNLWqaouzifBDZL44C7beiSUWt8k4R6Gj2fnG2tgqdAVSHpYv8He");
-  const publicKeyReceiver2 = bsv.PublicKey.fromPrivateKey(privateKeyReceiver2);
-  const receiver2Pkh = bsv.crypto.Hash.sha256ripemd160(publicKeyReceiver2.toBuffer());
+  const receiver2PrivKey = new bsv.PrivateKey.fromWIF("cNLWqaouzifBDZL44C7beiSUWt8k4R6Gj2fnG2tgqdAVSHpYv8He");
+  const receiver2Pk = bsv.PublicKey.fromPrivateKey(receiver2PrivKey);
+  const receiver2Pkh = bsv.crypto.Hash.sha256ripemd160(receiver2Pk.toBuffer());
   console.log("pkhReceiver2:", toHex(receiver2Pkh)); // 36d163b7bb8808077b768091fe93c3be55f44b15
 
-  const genesisOutpointTxId = "0229e3505156e0456747a4dfdd66b48994223e75ed97e746fec84c018d12fcde";
+  const genesisOutpointTxId = "2b7d40a28769f9ca420c7150ce906eaf1470899394b3a586f9374a7aa6781599";
   const genesisOutpointIdx = 1;
   const genesisOutpoint = reverseEndian(genesisOutpointTxId) + num2bin(genesisOutpointIdx, DataLen4);
-  const genesisOutpointValue = 100000;
   const genesisPreTxHex = await woc.getRawTxData(genesisOutpointTxId);
 
   console.log("genesis Tx outpoint: ", genesisOutpoint);
 
   try {
+    // 设置要执行的命令
+    let command = "transfer"
+
     const nft = new NFT(true);
 
-    // set token id start
-    let uniqTokenId = 0;
+    // 设置溯源信息
+    nft.setTxGenesisPart({ prevTxId: genesisOutpointTxId, outputIndex: genesisOutpointIdx });
 
-    if (true) {
-      let txGenesis = nft.makeTxGenesis({
+    //////////////////////////////////////////////////////////////// 创建Genesis
+    if (command == "genesis") {
+      let currTokenId = 0;
+
+      let txGenesis = await nft.makeTxGenesis({
         prevTxId: genesisOutpointTxId,
-        outputIndex: genesisOutpointIdx,
         outputIssuerPkh: issuerPkh,
-        outputTokenId: uniqTokenId,
-        inputSatoshis: genesisOutpointValue,
+        outputTokenId: currTokenId,
       });
-
-      console.log("prevtxid:", toHex(txGenesis.inputs[0].prevTxId));
-      console.log("prevtxindex:", txGenesis.inputs[0].outputIndex);
 
       txGenesis.sign(privateKey);
 
       let genesisTxid = await sendTx(txGenesis);
       // let genesisTxid = txGenesis.id;
-      console.log("genesis txid:      ", genesisTxid);
-      console.log("genesis txhex:     ", txGenesis.serialize());
-      // return;
+      console.log("genesis txid: ", genesisTxid);
+      console.log("genesis txhex: ", txGenesis.serialize());
     }
 
-    // increment token ID and issue another new token
-    /* from genesis issue */
-    let preUtxoTxId = genesisOutpointTxId;
-    let preUtxoOutputIndex = 1;
-    let preUtxoTxHex = genesisPreTxHex;
+    //////////////////////////////////////////////////////////////// 发行
+    if (command == "issue") {
+      // 设置prevPrevTxId，计算溯源u4
+      let preUtxoOutputIndex = 0;
+      let preUtxoTxId = "5d41f3518fe18f7d4eb4b92815c721856766d61dac7bf995fc5a12a2c2efd7f4";
+      let preUtxoTxHex = await woc.getRawTxData(preUtxoTxId);
 
-    let issueTxid = "8ca9949e651fd84d670f6121af59d558dfce0addbf6aa59f5cdc888f9df4dcf3";
-    let issueTxHex = await woc.getRawTxData(issueTxid);
+      // 设置prevTxId，为需要花费的utxo
+      let spendByTxId = "f9a3e8532006ef83017c00aa6af00aa1ed8f60d942903a1a13df212672b8b69e";
+      let spendByOutputIndex = 0
+      let spendByTxHex = await woc.getRawTxData(spendByTxId);
 
-    uniqTokenId = 0;
-    let spendByIssueTxId = issueTxid;
-    let spendByIssueTxHex = issueTxHex;
+      // 设置当前tokenId
+      let currTokenId = 2;
 
-    /* from next issue */
-    if (true) {
-      preUtxoTxId = issueTxid;
-      preUtxoOutputIndex = 0;
-      preUtxoTxHex = issueTxHex;
+      // 改好上面3处，即可解锁(spendByTxId, spendByOutputIndex)
 
-      issueTxid = "5d8fc6c58554f4669730552a6da63a564e946410453aa62bca54200974fa6ea6";
-      issueTxHex = await woc.getRawTxData(issueTxid);
+      ////////////////
+      // 创建并解锁issue
+      let txIssuePl = new PayloadNFT({ dataType: ISSUE, ownerPkh: issuerPkh, tokenId: currTokenId });
+      let txIssue = await nft.makeTxIssue(
+        {
+          prevTxId: spendByTxId,
+          outputIndex: spendByOutputIndex,
+          pl: _.cloneDeep(txIssuePl),
+        },
+        {
+          outputOwnerPkh: receiver1Pkh,
+          outputTokenId: currTokenId + 1,
+          changeAddress: dummyAddress,
+        });
+      // unlock
+      let verifyData = await nft.unlockTxIssue(
+        {
+          tx: txIssue,
+          pl: _.cloneDeep(txIssuePl),
+          outputOwnerPkh: receiver1Pkh,
+          changePkh: dummyPkh,
+        },
+        {
+          privKeyIssuer: issuerPrivKey,
+          publicKeyIssuer: issuerPk,
+        },
+        {
+          index: preUtxoOutputIndex,
+          txId: preUtxoTxId,
+          txHex: preUtxoTxHex,
+          byTxId: spendByTxId,
+          byTxHex: spendByTxHex,
+        });
 
-      uniqTokenId = 1;
-      spendByIssueTxId = issueTxid;
-      spendByIssueTxHex = issueTxHex;
-
-      let txIssue = nft.makeTxIssue({
-        prevTxId: issueTxid,
-        outputIndex: 0,
-        inputIssuerPkh: issuerPkh,
-        outputOwnerPkh: receiver1Pkh,
-        thisChangePk: publicKeyIssuer,
-        inputTokenId: uniqTokenId,
-        outputTokenId: uniqTokenId + 1,
-      });
-
-      nft.unlockTxIssue({
-        txIssue,
-        preTxId: spendByIssueTxId,
-        preTxHex: spendByIssueTxHex,
-        preUtxoTxId,
-        preUtxoOutputIndex,
-        preUtxoTxHex,
-        privKeyIssuer: privateKeyIssuer,
-        publicKeyIssuer,
-        inputIssuerPkh: issuerPkh,
-        outputReceiverPkh: receiver1Pkh,
-        pkhNewIssuer: issuerPkh,
-        inputTokenId: uniqTokenId,
-      });
-
-      issueTxid = await sendTx(tx);
-      // issueTxid = tx.id;
-      issueTxHex = tx.serialize();
-      console.log("issue txid:       ", issueTxid);
-      console.log("issue txhex:      ", issueTxHex);
-      //return;
+      let issueTxid = await sendTx(txIssue);
+      // let issueTxid = txIssue.id;
+      let issueTxHex = txIssue.serialize();
+      console.log("issue txid: ", issueTxid);
+      console.log("issue txhex: ", issueTxHex);
     }
 
-    // transfer token to publicKeyReceiver2
-    if (true) {
-      preUtxoTxId = issueTxid;
-      preUtxoOutputIndex = 0;
-      preUtxoTxHex = issueTxHex;
 
-      issueTxid = "5d8fc6c58554f4669730552a6da63a564e946410453aa62bca54200974fa6ea6";
-      issueTxHex = await woc.getRawTxData(issueTxid);
+    //////////////////////////////////////////////////////////////// transfer
+    if (command == "transfer") {
+      // 设置prevPrevTxId，计算溯源u4
+      let preUtxoOutputIndex = 1;
+      let preUtxoTxId = "f9a3e8532006ef83017c00aa6af00aa1ed8f60d942903a1a13df212672b8b69e";
+      let preUtxoTxHex = await woc.getRawTxData(preUtxoTxId);
 
-      uniqTokenId = 1;
-      spendByIssueTxId = issueTxid;
-      spendByIssueTxHex = issueTxHex;
+      // 设置prevTxId，为需要花费的utxo
+      let spendByTxId = "475760b4e6d1c0756db31ff163648aefe14e868731892d9812547d60ffae454c";
+      let spendByOutputIndex = 0;
+      let spendByTxHex = await woc.getRawTxData(spendByTxId);
 
-      let txTransfer = nft.makeTxTransfer({
-        prevTxId: issueTxid,
-        outputIndex: 1,
-        inputOwnerPkh: receiver1Pkh,
-        outputOwnerPkh: receiver2Pkh,
-        thisChangePk: publicKeyIssuer,
-        inputTokenId: uniqTokenId,
-        outputTokenId: uniqTokenId,
-      });
+      // 设置当前tokenId
+      let currTokenId = 2;
 
-      nft.unlockTxTransfer({
-        txTransfer,
-        preTxId: spendByIssueTxId,
-        preTxHex: spendByIssueTxHex,
-        preUtxoTxId,
-        preUtxoOutputIndex,
-        preUtxoTxHex,
-        privKeyTransfer: privateKeyReceiver1,
-        inputOwnerPkh: receiver1Pkh,
-        outputOwnerPkh: receiver2Pkh,
-        inputOwnerPk: publicKeyReceiver1,
-        changePkh: publicKeyReceiver1,
-        inputTokenId: uniqTokenId,
-      });
+      // 改好上面3处，即可解锁(spendByTxId, spendByOutputIndex)
 
-      let transferTxid = await sendTx(tx);
-      // let transferTxid = tx.id;
-      let transferTxHex = tx.serialize();
-      console.log("transfer txid:       ", transferTxid);
-      console.log("transfer txhex:      ", transferTxHex);
-      // return;
+      ////////////////
+      // 创建并解锁transfer
+      let txTransferPl = new PayloadNFT({ dataType: TRANSFER, ownerPkh: receiver2Pkh, tokenId: currTokenId });
+      let txTransfer = await nft.makeTxTransfer(
+        {
+          prevTxId: spendByTxId,
+          outputIndex: spendByOutputIndex,
+          pl: _.cloneDeep(txTransferPl),
+        },
+        {
+          outputOwnerPkh: receiver1Pkh,
+          outputTokenId: currTokenId,
+          changeAddress: dummyAddress,
+        });
+
+      // unlock
+      let verifyData = await nft.unlockTxTransfer(
+        {
+          tx: txTransfer,
+          pl: _.cloneDeep(txTransferPl),
+          outputOwnerPkh: receiver1Pkh,
+          changePkh: dummyPkh,
+        },
+        {
+          privKeyTransfer: receiver2PrivKey,
+          inputOwnerPk: receiver2Pk,
+        },
+        {
+          index: preUtxoOutputIndex,
+          txId: preUtxoTxId,
+          txHex: preUtxoTxHex,
+          byTxId: spendByTxId,
+          byTxHex: spendByTxHex,
+        });
+
+      let transferTxid = await sendTx(txTransfer);
+      // let transferTxid = txTransfer.id;
+      let transferTxHex = txTransfer.serialize();
+      console.log("transfer txid: ", transferTxid);
+      console.log("transfer txhex: ", transferTxHex);
     }
 
     console.log("Succeeded on testnet");

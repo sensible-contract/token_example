@@ -10,11 +10,11 @@ const dummyAddress = privateKey.toAddress();
 const dummyPublicKey = bsv.PublicKey.fromPrivateKey(privateKey);
 const dummyPkh = bsv.crypto.Hash.sha256ripemd160(dummyPublicKey.toBuffer());
 
-describe("Test sCrypt contract NFT In Javascript", () => {
+describe("Test sCrypt contract NFT In Javascript", async () => {
   // const privateKey1 = new bsv.PrivateKey.fromRandom('testnet')
   const issuerPrivKey = new bsv.PrivateKey.fromWIF("cPbFsSjFjCbfzTRc8M4nKNGhVJspwnPQAcDhdJgVr3Pdwpqq7LfA");
-  const publicKeyIssuer = bsv.PublicKey.fromPrivateKey(issuerPrivKey);
-  const issuerPkh = bsv.crypto.Hash.sha256ripemd160(publicKeyIssuer.toBuffer());
+  const issuerPk = bsv.PublicKey.fromPrivateKey(issuerPrivKey);
+  const issuerPkh = bsv.crypto.Hash.sha256ripemd160(issuerPk.toBuffer());
   console.log("pkhIssuer:", toHex(issuerPkh)); // d3e990e3d6802a033c9b8d3c2ceda56dc0638126
   console.log(`address: '${issuerPrivKey.toAddress()}'`);
 
@@ -43,20 +43,23 @@ describe("Test sCrypt contract NFT In Javascript", () => {
   let txTransferPl = new PayloadNFT({ dataType: TRANSFER, ownerPkh: receiver1Pkh, tokenId: currTokenId + 1 });
 
   //////////////////////////////////////////////////////////////// 创建Genesis之前的Tx
-  let txP2pk = nft.makeTxP2pk({ outputSatoshis: 100000000 });
+  let txP2pk = await nft.makeTxP2pk({ outputSatoshis: 100000000 });
   let genesisOutpointTxId = txP2pk.id;
   let genesisPreTxHex = txP2pk.serialize();
 
   //////////////////////////////////////////////////////////////// 再创建Genesis Tx
-  let txGenesis = nft.makeTxGenesis({
+
+  // 设置溯源信息
+  nft.setTxGenesisPart({ prevTxId: genesisOutpointTxId, outputIndex: 0 });
+
+  let txGenesis = await nft.makeTxGenesis({
     prevTxId: genesisOutpointTxId,
-    outputIndex: 0,
     outputIssuerPkh: issuerPkh,
     outputTokenId: currTokenId,
   });
 
   //////////////////////////////////////////////////////////////// 然后创建Issue Tx
-  let txIssue = nft.makeTxIssue(
+  let txIssue = await nft.makeTxIssue(
     {
       prevTxId: txGenesis.id,
       outputIndex: 0,
@@ -78,7 +81,7 @@ describe("Test sCrypt contract NFT In Javascript", () => {
       },
       {
         privKeyIssuer: issuerPrivKey,
-        publicKeyIssuer: publicKeyIssuer,
+        publicKeyIssuer: issuerPk,
       },
       {
         index: 0,
@@ -93,7 +96,7 @@ describe("Test sCrypt contract NFT In Javascript", () => {
   });
 
   //////////////////////////////////////////////////////////////// 创建Transfer Tx
-  let txTransfer = nft.makeTxTransfer(
+  let txTransfer = await nft.makeTxTransfer(
     {
       prevTxId: txIssue.id,
       outputIndex: 1,
@@ -131,7 +134,7 @@ describe("Test sCrypt contract NFT In Javascript", () => {
 
   //////////////////////////////////////////////////////////////// 创建Swap Tx
   let codeWithGenesisPartHashSwap = bsv.crypto.Hash.sha256sha256(bsv.util.buffer.hexToBuffer("00"));
-  let txSwapToken = nft.makeTxSwapToken(
+  let txSwapToken = await nft.makeTxSwapToken(
     {
       prevTxId: txIssue.id,
       outputIndex: 1,
@@ -178,7 +181,7 @@ describe("Test sCrypt contract NFT In Javascript", () => {
     codeWithGenesisPartHashSwap: codeWithGenesisPartHashSwap,
     tokenAmountSwap: 1,
   });
-  let txCancelSwapToken = nft.makeTxCancelSwapToken(
+  let txCancelSwapToken = await nft.makeTxCancelSwapToken(
     {
       prevTxId: txSwapToken.id,
       outputIndex: 0,
@@ -215,7 +218,7 @@ describe("Test sCrypt contract NFT In Javascript", () => {
 
   //////////////////////////////////////////////////////////////// 创建sell Tx
   const satoshiAmountSell = 100000;
-  let txSell = nft.makeTxSell(
+  let txSell = await nft.makeTxSell(
     {
       prevTxId: txIssue.id,
       outputIndex: 1,
@@ -254,7 +257,7 @@ describe("Test sCrypt contract NFT In Javascript", () => {
 
   //////////////////////////////////////////////////////////////// 创建取消sell Tx
   let txSellPl = new PayloadNFT({ dataType: SELL, ownerPkh: receiver1Pkh, satoshiAmountSell: satoshiAmountSell, tokenId: currTokenId + 1 });
-  let txCancelSell = nft.makeTxCancelSell(
+  let txCancelSell = await nft.makeTxCancelSell(
     {
       prevTxId: txSell.id,
       outputIndex: 0,
@@ -291,7 +294,7 @@ describe("Test sCrypt contract NFT In Javascript", () => {
 
   //////////////////////////////////////////////////////////////// 创建购买buy Tx
   const buyerSatoshis = 5000;
-  let txBuy = nft.makeTxBuy(
+  let txBuy = await nft.makeTxBuy(
     {
       prevTxId: txSell.id,
       outputIndex: 0,
@@ -329,7 +332,7 @@ describe("Test sCrypt contract NFT In Javascript", () => {
 
   //////////////////////////////////////////////////////////////// 创建Burn Tx
   let txTransferBurnPl = new PayloadNFT({ dataType: TRANSFER, ownerPkh: receiver1Pkh, tokenId: currTokenId + 1 });
-  let txTransferBurn = nft.makeTxTransferBurn(
+  let txTransferBurn = await nft.makeTxTransferBurn(
     {
       prevTxId: txIssue.id,
       outputIndex: 1,
