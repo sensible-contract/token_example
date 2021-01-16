@@ -24,7 +24,7 @@ import "util.scrypt";
  *  codePart, GenesisPart, ownerPkh, tokenAmount, satoshiAmount, SELL
  */
 
-contract PayloadToken {
+struct PayloadTokenData {
   /* 合约最后一块数据部分开始的字节下标，在第二个OP_PUSHDATA之后 */
   int dataStart;
 
@@ -56,7 +56,9 @@ contract PayloadToken {
 
   /* sell 数据 */
   int satoshiAmountSell;
+}
 
+library PayloadToken {
   /* 不同类型数据部分的长度 */
   static int genesisLen = 40;
   static int mintLen = 89;
@@ -76,82 +78,101 @@ contract PayloadToken {
   static bytes SWAP = b'02';
   static bytes SELL = b'03';
 
-  constructor(bytes scriptCode) {
+  static function load(bytes scriptCode): PayloadTokenData {
+      PayloadTokenData self = {
+          0,                        // int dataStart;
+          b'00',                    // bytes codePart;
+          b'00',                    // bytes codeWithGenesisPart;
+          b'00',                    // bytes dataType;
+          b'00',                    // bytes genesisOutpoint;
+          b'00',                    // bytes genesisOutputIdx;
+          b'00',                    // bytes blockHeader;
+          0,                        // int blockHeight;
+          Ripemd160(b'00'),         // Ripemd160 ownerPkh;
+          0,                        // int amount;
+          b'00',                    // bytes genesisOutpointSwap;
+          b'00',                    // bytes genesisOutputIdxSwap;
+          0,                        // int amountSwap;
+          0                         // int satoshiAmountSell;
+      };
+
     int scriptLen = len(scriptCode);
-    this.dataType = scriptCode[scriptLen - 1 : ];
+    self.dataType = scriptCode[scriptLen - 1 : ];
 
     int dataLen = 0;
     int prefixLen = 0;
-    if (this.dataType == PayloadToken.MINT) {
+    if (self.dataType == PayloadToken.MINT) {
       dataLen = PayloadToken.mintLen;
       prefixLen = len(PayloadToken.mintPrefix);
     }
-    else if (this.dataType == PayloadToken.TRANSFER) {
+    else if (self.dataType == PayloadToken.TRANSFER) {
       dataLen = PayloadToken.transferLen;
       prefixLen = len(PayloadToken.transferPrefix);
     }
-    else if (this.dataType == PayloadToken.SWAP) {
+    else if (self.dataType == PayloadToken.SWAP) {
       dataLen = PayloadToken.swapLen;
       prefixLen = len(PayloadToken.swapPrefix);
     }
-    else if (this.dataType == PayloadToken.SELL) {
+    else if (self.dataType == PayloadToken.SELL) {
       dataLen = PayloadToken.sellLen;
       prefixLen = len(PayloadToken.sellPrefix);
     }
     /* part */
-    this.dataStart = scriptLen - dataLen;
-    this.codeWithGenesisPart = scriptCode[ : this.dataStart - prefixLen ];
-    int codeWithGenesisLen = len(this.codeWithGenesisPart);
-    this.codePart = this.codeWithGenesisPart[ : codeWithGenesisLen - PayloadToken.genesisLen];
+    self.dataStart = scriptLen - dataLen;
+    self.codeWithGenesisPart = scriptCode[ : self.dataStart - prefixLen ];
+    int codeWithGenesisLen = len(self.codeWithGenesisPart);
+    self.codePart = self.codeWithGenesisPart[ : codeWithGenesisLen - PayloadToken.genesisLen];
     /* genesis */
-    this.genesisOutpoint = this.codeWithGenesisPart[codeWithGenesisLen - PayloadToken.genesisLen : codeWithGenesisLen - 4];
-    this.genesisOutputIdx = this.codeWithGenesisPart[codeWithGenesisLen - 4 : ];
+    self.genesisOutpoint = self.codeWithGenesisPart[codeWithGenesisLen - PayloadToken.genesisLen : codeWithGenesisLen - 4];
+    self.genesisOutputIdx = self.codeWithGenesisPart[codeWithGenesisLen - 4 : ];
     /* data: */
-    bytes dataPart = scriptCode[this.dataStart : ];
+    bytes dataPart = scriptCode[self.dataStart : ];
 
     /* support many kinds of data type */
-    if (this.dataType == PayloadToken.MINT) {
-      this.blockHeader = dataPart[ : 80];
-      this.blockHeight = unpack(dataPart[80 : 80 + 8]);
+    if (self.dataType == PayloadToken.MINT) {
+      self.blockHeader = dataPart[ : 80];
+      self.blockHeight = unpack(dataPart[80 : 80 + 8]);
     } else {
-      this.ownerPkh = Ripemd160(dataPart[ : 20]);
-      this.amount = unpack(dataPart[20 : 20 + 8]);
+      self.ownerPkh = Ripemd160(dataPart[ : 20]);
+      self.amount = unpack(dataPart[20 : 20 + 8]);
     }
 
-    if (this.dataType == PayloadToken.SWAP) {
-      this.genesisOutpointSwap = dataPart[28 : 28 + 36];
-      this.genesisOutputIdxSwap = dataPart[64 : 64 + 4];
-      this.amountSwap = unpack(dataPart[68 : 68 + 8]);
+    if (self.dataType == PayloadToken.SWAP) {
+      self.genesisOutpointSwap = dataPart[28 : 28 + 36];
+      self.genesisOutputIdxSwap = dataPart[64 : 64 + 4];
+      self.amountSwap = unpack(dataPart[68 : 68 + 8]);
     }
-    else if (this.dataType == PayloadToken.SELL) {
-      this.satoshiAmountSell = unpack(dataPart[28 : 28 + 8]);
+    else if (self.dataType == PayloadToken.SELL) {
+      self.satoshiAmountSell = unpack(dataPart[28 : 28 + 8]);
     }
+
+    return self;
   }
 
-  function dump() : bytes {
+  static function dump(PayloadTokenData self) : bytes {
     bytes payload = b'';
-    if (this.dataType == PayloadToken.MINT) {
+    if (self.dataType == PayloadToken.MINT) {
       payload = PayloadToken.mintPrefix +
-      this.blockHeader + num2bin(this.blockHeight, Util.OutputValueLen) +
-      this.dataType;
+      self.blockHeader + num2bin(self.blockHeight, Util.OutputValueLen) +
+      self.dataType;
     }
-    else if (this.dataType == PayloadToken.TRANSFER) {
+    else if (self.dataType == PayloadToken.TRANSFER) {
       payload = PayloadToken.transferPrefix +
-      this.ownerPkh + num2bin(this.amount, Util.OutputValueLen) +
-      this.dataType;
+      self.ownerPkh + num2bin(self.amount, Util.OutputValueLen) +
+      self.dataType;
     }
-    else if (this.dataType == PayloadToken.SWAP) {
+    else if (self.dataType == PayloadToken.SWAP) {
       payload = PayloadToken.swapPrefix +
-      this.ownerPkh + num2bin(this.amount, Util.OutputValueLen) +
-      this.genesisOutpointSwap + this.genesisOutputIdxSwap + num2bin(this.amountSwap, Util.OutputValueLen) +
-      this.dataType;
+      self.ownerPkh + num2bin(self.amount, Util.OutputValueLen) +
+      self.genesisOutpointSwap + self.genesisOutputIdxSwap + num2bin(self.amountSwap, Util.OutputValueLen) +
+      self.dataType;
     }
-    else if (this.dataType == PayloadToken.SELL) {
+    else if (self.dataType == PayloadToken.SELL) {
       payload = PayloadToken.sellPrefix +
-      this.ownerPkh + num2bin(this.amount, Util.OutputValueLen) +
-      num2bin(this.satoshiAmountSell, Util.OutputValueLen) +
-      this.dataType;
+      self.ownerPkh + num2bin(self.amount, Util.OutputValueLen) +
+      num2bin(self.satoshiAmountSell, Util.OutputValueLen) +
+      self.dataType;
     }
-    return this.codeWithGenesisPart + payload;
+    return self.codeWithGenesisPart + payload;
   }
 }

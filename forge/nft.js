@@ -52,7 +52,7 @@ class NFT {
 
     let nftContractDesc;
     let ftContractDesc;
-    const compileBeforeTest = false;
+    const compileBeforeTest = true;
     if (compileBeforeTest) {
       /* 实时编译 */
       nftContractDesc = compileContract("nft.scrypt");

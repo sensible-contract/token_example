@@ -8,34 +8,34 @@ genesis: 90213957e6c3b949b1a535581423d6d93c04e894c3735c6ef803af846a0739f8
 
 
 issue1: 5d41f3518fe18f7d4eb4b92815c721856766d61dac7bf995fc5a12a2c2efd7f4
-        NFT1 -> r1
+    NFT1 -> r1
 
 issue2: f9a3e8532006ef83017c00aa6af00aa1ed8f60d942903a1a13df212672b8b69e
-        NFT2 -> r1
+    NFT2 -> r1
 
 issue3: 4b93633178767babad86f009ee9d35c58a8867b7b455ea74dc3979f7b55f22c0
-        NFT3 -> r1
+    NFT3 -> r1
 
 
 transfer1: fa7a57385310457144c2075594992327222166f45faade85a718dcdd76ab9a9b
-        NFT1 -> r2
+    NFT1 -> r2
 
 transfer2: 475760b4e6d1c0756db31ff163648aefe14e868731892d9812547d60ffae454c
-        NFT2 -> r2
+    NFT2 -> r2
 
 transfer3: 3d0309fc4fd11b823d91837038ded3bb89676c7be51327086b178635c80b5ae4
-        NFT3 -> r2
+    NFT3 -> r2
 
 
 transfer2.1: 65caa5e2e399cb2220e4219f48e4850996466ec9ca88dea41f89eec729b05876
-        NFT2 -> r1
+    NFT2 -> r1
 
 
 makeSwap: 6ad0aa795b07598c2b7eba40f1f437311b14fc14886fd2dfc389a0751edf0694
-        NFT1 -> swap
+    NFT1 -> swap
 
 cancelSwap: eb9f56d95b55a1e8d800aab3e6e78017f204d32bbd23d7a6c0e9b12b50bdbca9
-        swap -> NFT1
+    swap -> NFT1
 
 
 sell: da1974c3dd062c64a82d740d12ad4f80a367e24d465377f6a0014edfdea65b69

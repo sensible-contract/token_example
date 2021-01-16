@@ -49,7 +49,7 @@ contract NFT {
 
     // read previous locking script
     bytes lockingScript = Util.scriptCode(txPreimage);
-    PayloadNFT pl = new PayloadNFT(lockingScript);
+    PayloadNFTData pl = PayloadNFT.load(lockingScript);
 
     // dataType must be issue
     require(pl.dataType == PayloadNFT.ISSUE);
@@ -66,12 +66,12 @@ contract NFT {
     int satoshiIssue = Util.value(txPreimage);
 
     pl.tokenId = pl.tokenId + 1;
-    bytes outputScript0 = pl.dump();
+    bytes outputScript0 = PayloadNFT.dump(pl);
     bytes output0 = Util.buildOutput(outputScript0, satoshiIssue);
 
     pl.ownerPkh = receiverPkh;
     pl.dataType = PayloadNFT.TRANSFER;
-    bytes outputScript1 = pl.dump();
+    bytes outputScript1 = PayloadNFT.dump(pl);
     bytes output1 = Util.buildOutput(outputScript1, satoshiAmount1);
 
     bytes lockingScript2 = Util.buildPublicKeyHashScript(changePkh);
@@ -103,7 +103,7 @@ contract NFT {
 
     // read previous locking script
     bytes lockingScript = Util.scriptCode(txPreimage);
-    PayloadNFT pl = new PayloadNFT(lockingScript);
+    PayloadNFTData pl = PayloadNFT.load(lockingScript);
 
     // dataType must be transfer
     require(pl.dataType == PayloadNFT.TRANSFER);
@@ -118,7 +118,7 @@ contract NFT {
 
     // 业务操作
     pl.ownerPkh = receiverPkh;
-    bytes outputScript0 = pl.dump();
+    bytes outputScript0 = PayloadNFT.dump(pl);
     bytes output0 = Util.buildOutput(outputScript0, satoshiAmount0);
 
     bytes lockingScript1 = Util.buildPublicKeyHashScript(changePkh);
@@ -151,7 +151,7 @@ contract NFT {
 
     // read previous locking script
     bytes lockingScript = Util.scriptCode(txPreimage);
-    PayloadNFT pl = new PayloadNFT(lockingScript);
+    PayloadNFTData pl = PayloadNFT.load(lockingScript);
 
     // dataType must be transfer
     require(pl.dataType == PayloadNFT.TRANSFER);
@@ -170,7 +170,7 @@ contract NFT {
     pl.codeWithGenesisPartHashSwap = codeWithGenesisPartHashSwap;
     pl.amountSwap = tokenAmountSwap;
     pl.dataType = PayloadNFT.SWAP;
-    bytes outputScript0 = pl.dump();
+    bytes outputScript0 = PayloadNFT.dump(pl);
     bytes output0 = Util.buildOutput(outputScript0, satoshiBefore);
 
     bytes outputScript1 = Util.buildPublicKeyHashScript(changePkh);
@@ -198,7 +198,7 @@ contract NFT {
 
     // read previous locking script
     bytes lockingScript = Util.scriptCode(txPreimage);
-    PayloadNFT pl = new PayloadNFT(lockingScript);
+    PayloadNFTData pl = PayloadNFT.load(lockingScript);
 
     // dataType must be swap
     require(pl.dataType == PayloadNFT.SWAP);
@@ -215,7 +215,7 @@ contract NFT {
 
     // 业务操作
     pl.dataType = PayloadNFT.TRANSFER;
-    bytes outputScript0 = pl.dump();
+    bytes outputScript0 = PayloadNFT.dump(pl);
     bytes output0 = Util.buildOutput(outputScript0, satoshiBefore);
 
     bytes outputScript1 = Util.buildPublicKeyHashScript(changePkh);
@@ -248,7 +248,7 @@ contract NFT {
 
     // read previous locking script
     bytes lockingScript = Util.scriptCode(txPreimage);
-    PayloadNFT plA = new PayloadNFT(lockingScript);
+    PayloadNFTData plA = PayloadNFT.load(lockingScript);
 
     // dataType must be swap
     require(plA.dataType == PayloadNFT.SWAP);
@@ -260,7 +260,7 @@ contract NFT {
     require(st.verifySide(b'', prevouts));
 
     /* other scriptCode */
-    PayloadToken plB = new PayloadToken(sideTxUtxoMsg[44 : ]);
+    PayloadTokenData plB = PayloadToken.load(sideTxUtxoMsg[44 : ]);
     require(plB.dataType == PayloadToken.TRANSFER);
     /* must match genesis */
     require(sha256(plB.codeWithGenesisPart) == plA.codeWithGenesisPartHashSwap);
@@ -273,11 +273,11 @@ contract NFT {
     // swap
     plA.ownerPkh = plB.ownerPkh;
     plA.dataType = PayloadNFT.TRANSFER;
-    bytes outputScript0 = plA.dump();
+    bytes outputScript0 = PayloadNFT.dump(plA);
     bytes output0 = Util.buildOutput(outputScript0, satoshiAmountB);
 
     plB.ownerPkh = ownerPkhA;
-    bytes outputScript1 = plB.dump();
+    bytes outputScript1 = PayloadToken.dump(plB);
     bytes output1 = Util.buildOutput(outputScript1, satoshiAmountA);
 
     bytes outputScript2 = Util.buildPublicKeyHashScript(changePkh);
@@ -308,7 +308,7 @@ contract NFT {
 
     // read previous locking script
     bytes lockingScript = Util.scriptCode(txPreimage);
-    PayloadNFT pl = new PayloadNFT(lockingScript);
+    PayloadNFTData pl = PayloadNFT.load(lockingScript);
 
     // dataType must be transfer
     require(pl.dataType == PayloadNFT.TRANSFER);
@@ -326,7 +326,7 @@ contract NFT {
     // 业务操作
     pl.satoshiAmountSell = satoshiAmountSell;
     pl.dataType = PayloadNFT.SELL;
-    bytes outputScript0 = pl.dump();
+    bytes outputScript0 = PayloadNFT.dump(pl);
     bytes output0 = Util.buildOutput(outputScript0, satoshiBefore);
 
     bytes outputScript1 = Util.buildPublicKeyHashScript(changePkh);
@@ -354,7 +354,7 @@ contract NFT {
 
     // read previous locking script
     bytes lockingScript = Util.scriptCode(txPreimage);
-    PayloadNFT pl = new PayloadNFT(lockingScript);
+    PayloadNFTData pl = PayloadNFT.load(lockingScript);
 
     // dataType must be sell
     require(pl.dataType == PayloadNFT.SELL);
@@ -371,7 +371,7 @@ contract NFT {
 
     // 业务操作
     pl.dataType = PayloadNFT.TRANSFER;
-    bytes outputScript0 = pl.dump();
+    bytes outputScript0 = PayloadNFT.dump(pl);
     bytes output0 = Util.buildOutput(outputScript0, satoshiBefore);
 
     bytes outputScript1 = Util.buildPublicKeyHashScript(changePkh);
@@ -401,7 +401,7 @@ contract NFT {
 
     // read previous locking script
     bytes lockingScript = Util.scriptCode(txPreimage);
-    PayloadNFT pl = new PayloadNFT(lockingScript);
+    PayloadNFTData pl = PayloadNFT.load(lockingScript);
 
     // dataType must be sell
     require(pl.dataType == PayloadNFT.SELL);
@@ -417,7 +417,7 @@ contract NFT {
     // 业务操作
     pl.ownerPkh = buyerPkh;
     pl.dataType = PayloadNFT.TRANSFER;
-    bytes outputScript0 = pl.dump();
+    bytes outputScript0 = PayloadNFT.dump(pl);
     bytes output0 = Util.buildOutput(outputScript0, satoshiAmount0);
 
     bytes outputScript1 = Util.buildPublicKeyHashScript(sellerPkh);
@@ -443,7 +443,7 @@ contract NFT {
 
     // read previous locking script
     bytes lockingScript = Util.scriptCode(txPreimage);
-    PayloadNFT pl = new PayloadNFT(lockingScript);
+    PayloadNFTData pl = PayloadNFT.load(lockingScript);
 
     // dataType must be transfer
     require(pl.dataType == PayloadNFT.TRANSFER);

@@ -57,7 +57,7 @@ contract Token {
 
     // read previous locking script
     bytes lockingScript = Util.scriptCode(txPreimage);
-    PayloadToken pl = new PayloadToken(lockingScript);
+    PayloadTokenData pl = PayloadToken.load(lockingScript);
 
     // dataType must be mint
     require(pl.dataType == PayloadToken.MINT);
@@ -75,13 +75,13 @@ contract Token {
 
     pl.blockHeader = blockHeader;
     pl.blockHeight = pl.blockHeight + 1;
-    bytes outputScript0 = pl.dump();
+    bytes outputScript0 = PayloadToken.dump(pl);
     bytes output0 = Util.buildOutput(outputScript0, satoshiMint);
 
     pl.ownerPkh = receiverPkh;
     pl.amount = unpack(tokenAmount);
     pl.dataType = PayloadToken.TRANSFER;
-    bytes outputScript1 = pl.dump();
+    bytes outputScript1 = PayloadToken.dump(pl);
     bytes output1 = Util.buildOutput(outputScript1, satoshiAmount1);
 
     bytes outputScript2 = Util.buildPublicKeyHashScript(changePkh);
@@ -117,7 +117,7 @@ contract Token {
 
     // read previous locking script
     bytes lockingScript = Util.scriptCode(txPreimage);
-    PayloadToken pl = new PayloadToken(lockingScript);
+    PayloadTokenData pl = PayloadToken.load(lockingScript);
 
     // dataType must be transfer
     require(pl.dataType == PayloadToken.TRANSFER);
@@ -135,12 +135,12 @@ contract Token {
     // 业务操作
     pl.ownerPkh = receiver0Pkh;
     pl.amount = tokenAmount0;
-    bytes outputScript0 = pl.dump();
+    bytes outputScript0 = PayloadToken.dump(pl);
     bytes output0 = Util.buildOutput(outputScript0, satoshiAmount0);
 
     pl.ownerPkh = receiver1Pkh;
     pl.amount = tokenAmount1;
-    bytes outputScript1 = pl.dump();
+    bytes outputScript1 = PayloadToken.dump(pl);
     bytes output1 = Util.buildOutput(outputScript1, satoshiAmount1);
 
     bytes outputScript2 = Util.buildPublicKeyHashScript(changePkh);
@@ -172,7 +172,7 @@ contract Token {
 
     // read previous locking script
     bytes lockingScript = Util.scriptCode(txPreimage);
-    PayloadToken pl = new PayloadToken(lockingScript);
+    PayloadTokenData pl = PayloadToken.load(lockingScript);
 
     // dataType must be transfer
     require(pl.dataType == PayloadToken.TRANSFER);
@@ -188,14 +188,14 @@ contract Token {
     require(st.verifySide(pl.codeWithGenesisPart, prevouts));
 
     /* other scriptCode */
-    PayloadToken plOther = new PayloadToken(sideTxUtxoMsg[44 : ]);
+    PayloadTokenData plOther = PayloadToken.load(sideTxUtxoMsg[44 : ]);
     require(plOther.dataType == PayloadToken.TRANSFER);
     require(plOther.codeWithGenesisPart == pl.codeWithGenesisPart);
 
     // merge
     pl.ownerPkh = receiverPkh;
     pl.amount = pl.amount + plOther.amount;
-    bytes outputScript0 = pl.dump();
+    bytes outputScript0 = PayloadToken.dump(pl);
     bytes output0 = Util.buildOutput(outputScript0, satoshiAmount0);
 
     bytes outputScript1 = Util.buildPublicKeyHashScript(changePkh);
@@ -227,7 +227,7 @@ contract Token {
 
     // read previous locking script
     bytes lockingScript = Util.scriptCode(txPreimage);
-    PayloadToken pl = new PayloadToken(lockingScript);
+    PayloadTokenData pl = PayloadToken.load(lockingScript);
 
     // dataType must be transfer
     require(pl.dataType == PayloadToken.TRANSFER);
@@ -247,7 +247,7 @@ contract Token {
     pl.genesisOutputIdxSwap = genesisOutputIdxSwap;
     pl.amountSwap = tokenAmountSwap;
     pl.dataType = PayloadToken.SWAP;
-    bytes outputScript0 = pl.dump();
+    bytes outputScript0 = PayloadToken.dump(pl);
     bytes output0 = Util.buildOutput(outputScript0, satoshiBefore);
 
     bytes outputScript1 = Util.buildPublicKeyHashScript(changePkh);
@@ -275,7 +275,7 @@ contract Token {
 
     // read previous locking script
     bytes lockingScript = Util.scriptCode(txPreimage);
-    PayloadToken pl = new PayloadToken(lockingScript);
+    PayloadTokenData pl = PayloadToken.load(lockingScript);
 
     // dataType must be swap
     require(pl.dataType == PayloadToken.SWAP);
@@ -292,7 +292,7 @@ contract Token {
 
     // 业务操作
     pl.dataType = PayloadToken.TRANSFER;
-    bytes outputScript0 = pl.dump();
+    bytes outputScript0 = PayloadToken.dump(pl);
     bytes output0 = Util.buildOutput(outputScript0, satoshiBefore);
 
     bytes outputScript1 = Util.buildPublicKeyHashScript(changePkh);
@@ -324,7 +324,7 @@ contract Token {
 
     // read previous locking script
     bytes lockingScript = Util.scriptCode(txPreimage);
-    PayloadToken plA = new PayloadToken(lockingScript);
+    PayloadTokenData plA = PayloadToken.load(lockingScript);
 
     // dataType must be swap
     require(plA.dataType == PayloadToken.SWAP);
@@ -336,7 +336,7 @@ contract Token {
     require(st.verifySide(plA.codePart, prevouts));
 
     /* other scriptCode */
-    PayloadToken plB = new PayloadToken(sideTxUtxoMsg[44 : ]);
+    PayloadTokenData plB = PayloadToken.load(sideTxUtxoMsg[44 : ]);
     require(plB.dataType == PayloadToken.TRANSFER);
     require(plB.codePart == plA.codePart);
 
@@ -352,11 +352,11 @@ contract Token {
     // swap
     plA.ownerPkh = plB.ownerPkh;
     plA.dataType = PayloadToken.TRANSFER;
-    bytes outputScript0 = plA.dump();
+    bytes outputScript0 = PayloadToken.dump(plA);
     bytes output0 = Util.buildOutput(outputScript0, satoshiAmountB);
 
     plB.ownerPkh = ownerPkhA;
-    bytes outputScript1 = plB.dump();
+    bytes outputScript1 = PayloadToken.dump(plB);
     bytes output1 = Util.buildOutput(outputScript1, satoshiAmountA);
 
     bytes outputScript2 = Util.buildPublicKeyHashScript(changePkh);
@@ -389,7 +389,7 @@ contract Token {
 
     // read previous locking script
     bytes lockingScript = Util.scriptCode(txPreimage);
-    PayloadToken plB = new PayloadToken(lockingScript);
+    PayloadTokenData plB = PayloadToken.load(lockingScript);
 
     // dataType must be transfer
     require(plB.dataType == PayloadToken.TRANSFER);
@@ -405,7 +405,7 @@ contract Token {
     require(st.verifySide(plB.codePart, prevouts));
 
     /* other scriptCode */
-    PayloadToken plA = new PayloadToken(sideTxUtxoMsg[44 : ]);
+    PayloadTokenData plA = PayloadToken.load(sideTxUtxoMsg[44 : ]);
     require(plA.dataType == PayloadToken.SWAP);
     require(plA.codePart == plB.codePart);
 
@@ -417,11 +417,11 @@ contract Token {
 
     plA.ownerPkh = plB.ownerPkh;
     plA.dataType = PayloadToken.TRANSFER;
-    bytes outputScript0 = plA.dump();
+    bytes outputScript0 = PayloadToken.dump(plA);
     bytes output0 = Util.buildOutput(outputScript0, satoshiAmountB);
 
     plB.ownerPkh = ownerPkhA;
-    bytes outputScript1 = plB.dump();
+    bytes outputScript1 = PayloadToken.dump(plB);
     bytes output1 = Util.buildOutput(outputScript1, satoshiAmountA);
 
     bytes outputScript2 = Util.buildPublicKeyHashScript(changePkh);
@@ -455,7 +455,7 @@ contract Token {
 
     // read previous locking script
     bytes lockingScript = Util.scriptCode(txPreimage);
-    PayloadToken plB = new PayloadToken(lockingScript);
+    PayloadTokenData plB = PayloadToken.load(lockingScript);
 
     // dataType must be transfer
     require(plB.dataType == PayloadToken.TRANSFER);
@@ -465,7 +465,7 @@ contract Token {
     require(checkSig(ownerSig, owner));
 
     /* other scriptCode */
-    PayloadNFT plA = new PayloadNFT(sideTxUtxoMsg[44 : ]);
+    PayloadNFTData plA = PayloadNFT.load(sideTxUtxoMsg[44 : ]);
     require(plA.dataType == PayloadNFT.SWAP);
 
     // source
@@ -482,12 +482,12 @@ contract Token {
     Ripemd160 ownerPkhA = plA.ownerPkh;
 
     plA.ownerPkh = plB.ownerPkh;
-    plA.dataType = PayloadToken.TRANSFER;
-    bytes outputScript0 = plA.dump();
+    plA.dataType = PayloadNFT.TRANSFER;
+    bytes outputScript0 = PayloadNFT.dump(plA);
     bytes output0 = Util.buildOutput(outputScript0, satoshiAmountB);
 
     plB.ownerPkh = ownerPkhA;
-    bytes outputScript1 = plB.dump();
+    bytes outputScript1 = PayloadToken.dump(plB);
     bytes output1 = Util.buildOutput(outputScript1, satoshiAmountA);
 
     bytes outputScript2 = Util.buildPublicKeyHashScript(changePkh);
@@ -518,7 +518,7 @@ contract Token {
 
     // read previous locking script
     bytes lockingScript = Util.scriptCode(txPreimage);
-    PayloadToken pl = new PayloadToken(lockingScript);
+    PayloadTokenData pl = PayloadToken.load(lockingScript);
 
     // dataType must be transfer
     require(pl.dataType == PayloadToken.TRANSFER);
@@ -536,7 +536,7 @@ contract Token {
     // 业务操作
     pl.satoshiAmountSell = satoshAmountSell;
     pl.dataType = PayloadToken.SELL;
-    bytes outputScript0 = pl.dump();
+    bytes outputScript0 = PayloadToken.dump(pl);
     bytes output0 = Util.buildOutput(outputScript0, satoshiBefore);
 
     bytes outputScript1 = Util.buildPublicKeyHashScript(changePkh);
@@ -564,7 +564,7 @@ contract Token {
 
     // read previous locking script
     bytes lockingScript = Util.scriptCode(txPreimage);
-    PayloadToken pl = new PayloadToken(lockingScript);
+    PayloadTokenData pl = PayloadToken.load(lockingScript);
 
     // dataType must be sell
     require(pl.dataType == PayloadToken.SELL);
@@ -581,7 +581,7 @@ contract Token {
 
     // 业务操作
     pl.dataType = PayloadToken.TRANSFER;
-    bytes outputScript0 = pl.dump();
+    bytes outputScript0 = PayloadToken.dump(pl);
     bytes output0 = Util.buildOutput(outputScript0, satoshiBefore);
 
     bytes outputScript1 = Util.buildPublicKeyHashScript(changePkh);
@@ -611,7 +611,7 @@ contract Token {
 
     // read previous locking script
     bytes lockingScript = Util.scriptCode(txPreimage);
-    PayloadToken pl = new PayloadToken(lockingScript);
+    PayloadTokenData pl = PayloadToken.load(lockingScript);
 
     // dataType must be sell
     require(pl.dataType == PayloadToken.SELL);
@@ -627,7 +627,7 @@ contract Token {
     // 业务操作
     pl.ownerPkh = buyerPkh;
     pl.dataType = PayloadToken.TRANSFER;
-    bytes outputScript0 = pl.dump();
+    bytes outputScript0 = PayloadToken.dump(pl);
     bytes output0 = Util.buildOutput(outputScript0, satoshiAmount0);
 
     bytes outputScript1 = Util.buildPublicKeyHashScript(changePkh);
@@ -654,7 +654,7 @@ contract Token {
 
     // read previous locking script
     bytes lockingScript = Util.scriptCode(txPreimage);
-    PayloadToken pl = new PayloadToken(lockingScript);
+    PayloadTokenData pl = PayloadToken.load(lockingScript);
 
     // dataType must be transfer
     require(pl.dataType == PayloadToken.TRANSFER);
