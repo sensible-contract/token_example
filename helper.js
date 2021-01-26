@@ -14,9 +14,11 @@ const DataLen4 = 4;
 const DataLen8 = 8;
 
 const axios = require("axios");
-const API_PREFIX = "https://api.whatsonchain.com/v1/bsv/test";
+// const API_PREFIX = "https://api.whatsonchain.com/v1/bsv/test";
+const API_PREFIX = "https://api.whatsonchain.com/v1/bsv/main";
 
-const SATOTX_API_PREFIX = "http://localhost:8000";
+// const SATOTX_API_PREFIX = "http://localhost:8000";
+const SATOTX_API_PREFIX = "https://api.satotx.com";
 
 const inputIndex = 0;
 const inputSatoshis = 100000;
@@ -196,7 +198,7 @@ function unlockP2PKHInput(privateKey, tx, inputIndex, sigtype) {
     ),
     sigtype,
   });
-  
+
   tx.inputs[inputIndex].setScript(bsv.Script.buildPublicKeyHashIn(sig.publicKey, sig.signature.toDER(), sig.sigtype));
 }
 
@@ -209,7 +211,7 @@ function unlockP2PKHInput(privateKey, tx, inputIndex, sigtype) {
  * @param {String} satotxData.byTxHex 花费此utxo的rawtx
  */
 async function satoTxSigUTXOSpendBy({ index, txId, txHex, byTxId, byTxHex }) {
-  const { data: result } = await axios.post(`${SATOTX_API_PREFIX}/api/sig-utxo-spend-by/${txId}/${index}/${byTxId}`, {
+  const { data: result } = await axios.post(`${SATOTX_API_PREFIX}/utxo-spend-by/${txId}/${index}/${byTxId}`, {
     txHex: txHex,
     byTxHex: byTxHex,
   });
@@ -223,7 +225,7 @@ async function satoTxSigUTXOSpendBy({ index, txId, txHex, byTxId, byTxHex }) {
  * @param {String} satotxData.txHex 产生utxo的rawtx
  */
 async function satoTxSigUTXO({ index, txId, txHex }) {
-  const { data: result } = await axios.post(`${SATOTX_API_PREFIX}/api/sig-utxo/${txId}/${index}`, {
+  const { data: result } = await axios.post(`${SATOTX_API_PREFIX}/utxo/${txId}/${index}`, {
     txHex: txHex,
   });
   return result.data;

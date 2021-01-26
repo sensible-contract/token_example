@@ -16,7 +16,6 @@ import "rabin.scrypt";
 * value 8 Bytes
 */
 
-
 struct PayloadU4Data {
   int length;
   int scriptCodeLen;
@@ -25,8 +24,6 @@ struct PayloadU4Data {
   int value;
   bytes scriptCode;
 }
-
-
 
 struct PayloadU4SpendByData {
   int length;
@@ -54,15 +51,14 @@ contract SatoTx {
 
   static bytes disableUtxoInGenesisTx = b'64697361626c654f746865725574786f4d6f76696e6746726f6d47656e65736973547821';
 
-
-  function PayloadU4_load(bytes msg): PayloadU4Data {
-      PayloadU4Data self = {
-          0,
-          0,
-          b'',
-          0,
-          b''
-      };
+  function PayloadU4_load(bytes msg) : PayloadU4Data {
+    PayloadU4Data self = {
+      0,
+      0,
+      b'',
+      0,
+      b''
+    };
     self.length = len(msg);
     self.scriptCodeLen = self.length - 32 - 4 - 8;
 
@@ -73,15 +69,15 @@ contract SatoTx {
     return self;
   }
 
-  function PayloadU4SpendBy_load(bytes msg): PayloadU4SpendByData {
-      PayloadU4SpendByData self = {
-          0,
-          0,
-          b'',
-          0,
-          b'',
-          Sha256(b'')
-      };
+  function PayloadU4SpendBy_load(bytes msg) : PayloadU4SpendByData {
+    PayloadU4SpendByData self = {
+      0,
+      0,
+      b'',
+      0,
+      b'',
+      Sha256(b'')
+    };
     self.length = len(msg);
     self.scriptCodeLen = self.length - 32 - 4 - 8 - 32;
 
@@ -92,8 +88,6 @@ contract SatoTx {
 
     return self;
   }
-
-
 
   /**
   * 溯源
@@ -171,7 +165,7 @@ contract SatoTx {
 
     // each outpoint: 32 byte txid + 4 byte index
     int prevOutpointsCount = len(prevouts) / 36;
-    /* 目前Tx最大支持遍历10个input */
+    /* 目前Tx最大支持遍历16个input */
     require(prevOutpointsCount <= 16);
 
     bool matchSide = false;
@@ -207,3 +201,7 @@ contract SatoTx {
     require(matchSide == true);
   }
 }
+
+
+
+
