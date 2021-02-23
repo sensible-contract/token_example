@@ -52,7 +52,7 @@ class NFT {
 
     let nftContractDesc;
     let ftContractDesc;
-    const compileBeforeTest = true;
+    const compileBeforeTest = !deploy;
     if (compileBeforeTest) {
       /* 实时编译 */
       nftContractDesc = compileContract("nft.scrypt");
@@ -679,7 +679,7 @@ class NFT {
       // unlock other p2pkh inputs
       for (let i = 0; i < curInputIndex; i++) {
         unlockP2PKHInput(privateKey, tx, i, sighashType);
-        // console.log("sig:", i, tx.inputs[i].script.toASM())        
+        // console.log("sig:", i, tx.inputs[i].script.toASM())
       }
       const unlockingScript = contractObj.toScript();
       tx.inputs[curInputIndex].setScript(unlockingScript);
